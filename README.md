@@ -32,6 +32,10 @@ robotsmith advise  --log access.log --current https://example.com/robots.txt --h
 🤖 Coding agents: [AGENTS.md](AGENTS.md) · 🗺️ Roadmap: [BACKLOG.md](BACKLOG.md) ·
 📓 Changes: [CHANGELOG.md](CHANGELOG.md)
 
+Current: **0.2.0** — *Fit for a pipeline* ([milestone closed](https://github.com/Allan-Nava/robotsmith/milestone/1)).
+Next: [v0.3.0 — Sharper advice](https://github.com/Allan-Nava/robotsmith/milestone/2) ·
+[v0.4.0 — Your policy, verified continuously](https://github.com/Allan-Nava/robotsmith/milestone/3).
+
 ## Why writing four lines by hand is not enough
 
 The risk is **asymmetric**. Blocking a scraper produces no visible effect; accidentally blocking

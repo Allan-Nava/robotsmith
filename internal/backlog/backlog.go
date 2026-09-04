@@ -34,10 +34,14 @@ type Item struct {
 func (i Item) Done() bool { return i.Status == "done" }
 
 var (
-	reItem      = regexp.MustCompile("^### `([a-z0-9][a-z0-9-]*)`\\s*—\\s*(.+?)\\s*$")
-	reMeta      = regexp.MustCompile(`^-\s+\*\*([a-z]+)\*\*:\s*(.+?)\s*$`)
-	reHeading   = regexp.MustCompile(`^#\s+(.+?)\s*$`)
-	reTableRow  = regexp.MustCompile(`^\|\s*\[([^\]]+)\]\([^)]*\)\s*\|[^|]*\|\s*(\d+)\s*\|\s*(\d+)\s*\|`)
+	reItem    = regexp.MustCompile("^### `([a-z0-9][a-z0-9-]*)`\\s*—\\s*(.+?)\\s*$")
+	reMeta    = regexp.MustCompile(`^-\s+\*\*([a-z]+)\*\*:\s*(.+?)\s*$`)
+	reHeading = regexp.MustCompile(`^#\s+(.+?)\s*$`)
+	// A summary row starts with a milestone link. ⚠️ The trailing text before the first pipe is
+	// tolerated on purpose (a closed milestone carries a ✅ there): a row that stopped matching
+	// would stop being counted, silently, which is worse than a wrong count. Anything after the
+	// link is parsed field by field instead, so a malformed row fails loudly.
+	reTableRow  = regexp.MustCompile(`^\|\s*\[([^\]]+)\]\([^)]*\)[^|]*\|(.*)$`)
 	validStatus = map[string]bool{"open": true, "done": true}
 )
 
@@ -177,8 +181,19 @@ func lintRoadmapTable(items []Item, md string) []string {
 			probs = append(probs, fmt.Sprintf("the roadmap table lists %q, which no item belongs to", name))
 			continue
 		}
-		wantOpen, _ := strconv.Atoi(m[2])
-		wantDone, _ := strconv.Atoi(m[3])
+		// The two trailing numeric columns are the counts; everything between is prose.
+		var nums []int
+		for _, cell := range strings.Split(m[2], "|") {
+			if n, err := strconv.Atoi(strings.TrimSpace(cell)); err == nil {
+				nums = append(nums, n)
+			}
+		}
+		if len(nums) < 2 {
+			probs = append(probs, fmt.Sprintf("the roadmap row for %q cannot be read: it must end with "+
+				"the open and done counts", name))
+			continue
+		}
+		wantOpen, wantDone := nums[len(nums)-2], nums[len(nums)-1]
 		if wantOpen != c.open || wantDone != c.done {
 			probs = append(probs, fmt.Sprintf("the roadmap table says %q has %d open / %d done, the items "+
 				"say %d open / %d done", name, wantOpen, wantDone, c.open, c.done))

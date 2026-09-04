@@ -164,3 +164,23 @@ func containsSubstring(list []string, sub string) bool {
 	}
 	return false
 }
+
+func TestLintStillCountsARowThatCarriesAMarker(t *testing.T) {
+	// ⚠️ A closed milestone gets a ✅ next to its link. If the row stopped matching, the counts
+	// would stop being checked — silently, which is worse than a wrong count.
+	md := strings.Replace(sample, "| [v0.2.0 — Ship it](#x) | theme | 1 | 1 |",
+		"| [v0.2.0 — Ship it](#x) ✅ | theme | 9 | 9 |", 1)
+	probs := Lint(mustParse(t, md), md)
+	if !containsSubstring(probs, "9 open / 9 done") {
+		t.Errorf("a row with a trailing marker must still be counted, got %v", probs)
+	}
+}
+
+func TestLintFailsOnATableRowItCannotRead(t *testing.T) {
+	// A malformed row is a hole in the gate: better to fail loudly than to skip it.
+	md := strings.Replace(sample, "| [v0.2.0 — Ship it](#x) | theme | 1 | 1 |",
+		"| [v0.2.0 — Ship it](#x) | theme | one | 1 |", 1)
+	if probs := Lint(mustParse(t, md), md); !containsSubstring(probs, "cannot be read") {
+		t.Errorf("an unreadable summary row must be flagged, got %v", probs)
+	}
+}

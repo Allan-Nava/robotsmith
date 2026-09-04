@@ -7,6 +7,13 @@ consumers get exactly what a tag says. Pushing is always the maintainer's call, 
 
 ## [Unreleased]
 
+_Nothing yet. Next up: [v0.3.0 — Sharper advice](BACKLOG.md#v030--sharper-advice)._
+
+## [0.2.0] — 2026-09-04
+
+**Fit for a pipeline** — machine-readable output, a strict mode, logs the way logs actually arrive,
+installable everywhere, and the automation that keeps all of it honest.
+
 ### Added
 - **`--json` on `check`, `lint` and `advise`** (`internal/report`): one document on stdout, nothing
   else there, with a pinned `schema` field (`robotsmith.check/1`, `robotsmith.lint/1`,
@@ -80,5 +87,6 @@ consumers get exactly what a tag says. Pushing is always the maintainer's call, 
 - `internal/matcher`: RFC 9309 parser and evaluation (longest match, `Allow` wins ties).
 - Exit codes `0` / `1` / `2` / `4` as a CI contract.
 
-[Unreleased]: https://github.com/Allan-Nava/robotsmith/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/Allan-Nava/robotsmith/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/Allan-Nava/robotsmith/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/Allan-Nava/robotsmith/releases/tag/v0.1.0

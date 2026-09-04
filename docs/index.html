@@ -88,8 +88,20 @@
 </header>
 
 <h2>Install</h2>
-<pre><code>go install github.com/Allan-Nava/robotsmith@latest</code></pre>
-<p class="sub">Go 1.24, no external dependencies — a single binary, fit for a CI pipeline.</p>
+<pre><code># Homebrew (tapped straight from this repo)
+brew tap Allan-Nava/robotsmith https://github.com/Allan-Nava/robotsmith
+brew install robotsmith
+
+# Docker — scratch image, runs as nobody
+docker run --rm ghcr.io/allan-nava/robotsmith check example.com
+docker run --rm -v "$PWD:/w:ro" ghcr.io/allan-nava/robotsmith lint /w/robots.txt
+
+# Go
+go install github.com/Allan-Nava/robotsmith@latest</code></pre>
+<p class="sub">Go 1.24, no external dependencies — a single static binary, fit for a CI pipeline.
+Prebuilt binaries for linux and macOS (amd64/arm64) with checksums come with every release; the
+container image is <code>scratch</code> plus the binary and a CA bundle, with no shell and no
+package manager inside it.</p>
 
 <div class="cmds">
   <div class="cmd">
@@ -322,11 +334,17 @@ behaviour change starts from a failing test, and every bug found gets a test bef
 suite runs with <code>-race</code> in CI along with <code>gofmt -l</code>, <code>go vet</code> and
 <code>go build</code>; no test touches the network (<code>httptest</code> only) or writes outside a
 temporary directory.</p>
+<p><b>The backlog is projected, not retyped.</b> The todos live in one file next to the code
+(<code>BACKLOG.md</code>), and a sync opens, updates, reopens or closes one GitHub issue per item —
+matched by a stable id carried in the issue body, so editing a title updates the issue instead of
+opening a twin. Dry run is the default, and the sync refuses to run on a file that does not lint.</p>
 <p><b>The automation is part of the contract.</b> A tagged push cross-compiles four targets with
 the version stamped in from the tag, takes the release notes from the CHANGELOG (and refuses to
 publish if the section is missing), and ships checksums. CI cross-compiles those same targets on
 every pull request, and a test asserts that the flags and exit codes written on this page are the
-ones the binary really exposes — the documentation cannot drift without turning the build red.</p>
+ones the binary really exposes — the documentation cannot drift without turning the build red. The
+same gate checks that the Go version agrees across <code>go.mod</code>, the workflows and the
+<code>Dockerfile</code>, and that every install method promised here has a file behind it.</p>
 <p style="margin-bottom:0">The parser is kept separate from the policy on purpose: matching
 correctness is verifiable against the RFC, policy is an opinion. <code>internal/matcher</code> knows
 nothing about "good crawlers"; <code>internal/advise</code> does no I/O.</p>

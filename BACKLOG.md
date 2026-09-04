@@ -38,17 +38,19 @@ disagree with the items all fail the build. The counts below are therefore check
 
 | Milestone | Theme | Open | Done |
 |---|---|---:|---:|
-| [v0.2.0 — Fit for a pipeline](#v020--fit-for-a-pipeline) | make the tool consumable by machines, and cut real releases | 0 | 10 |
+| [v0.2.0 — Fit for a pipeline](#v020--fit-for-a-pipeline) ✅ | make the tool consumable by machines, and cut real releases | 0 | 10 |
 | [v0.3.0 — Sharper advice](#v030--sharper-advice) | better answers on the same input | 4 | 0 |
+| [v0.4.0 — Your policy, verified continuously](#v040--your-policy-verified-continuously) | overridable policy, a closed loop, one-line CI, a report you can send | 6 | 0 |
 | [Backlog (unscheduled)](#backlog-unscheduled) | worth doing, not worth scheduling | 3 | 0 |
 
 ---
 
 # v0.2.0 — Fit for a pipeline
 
-> ✅ **Complete in the working tree** — every item below is implemented and tested. The milestone
-> closes when the maintainer pushes and tags `v0.2.0`: the release workflow then builds the binaries
-> and takes its notes from [CHANGELOG.md](CHANGELOG.md).
+> ✅ **Closed** — every item below is implemented, tested and written up in
+> [CHANGELOG.md](CHANGELOG.md) under `0.2.0`. The binaries, the image and the formula bump are
+> produced by [release.yml](.github/workflows/release.yml) when the maintainer pushes the `v0.2.0`
+> tag; nothing in this milestone is waiting on code.
 
 **Goal**: `robotsmith` runs unattended in someone else's CI. That means machine-readable output, a
 strict mode, logs arriving the way logs actually arrive, and installable binaries — plus the tests
@@ -272,6 +274,136 @@ computed only when a `--log` is given (a `--ua-counts` input cannot know), with 
 log.
 
 ---
+
+# v0.4.0 — Your policy, verified continuously
+
+**Goal**: stop being a tool someone remembers to run, and stop being a tool only its operator can
+read. The opinion baked into the tables is a good default, not everyone's policy — so make it
+overridable, make the loop close (advise → deploy → verify), make it trivial to run on every push,
+and make the result something you can hand to whoever actually signs off on it.
+
+### `github-action` — a composite action, so adding this to a pipeline is three lines
+
+- **status**: open
+- **priority**: high
+- **labels**: ci, ux
+- **milestone**: v0.4.0 — Your policy, verified continuously
+
+The tool is CI-shaped — machine-readable output, an exit-code contract, a container image — and
+still every team has to write the same twenty lines of workflow to use it. An action that wraps
+`check`/`lint`, turns `--json` findings into GitHub annotations on the changed lines and fails the
+job on the documented codes removes the only remaining excuse not to run it.
+
+**Done when:** `uses: Allan-Nava/robotsmith@v1` with `command: lint` annotates a defective
+`robots.txt` on the right line, a test asserts the annotation format against a fixture document, and
+the action is exercised by this repo's own CI (dogfooding, so a broken action is a red build here
+before it is a red build for anyone else).
+
+### `policy-config` — let a site override the built-in opinion
+
+- **status**: open
+- **priority**: high
+- **labels**: advise, ux
+- **milestone**: v0.4.0 — Your policy, verified continuously
+
+The policy table is an opinion — a defensible one, and documented as such in
+[INTENT.md](INTENT.md) — but a news site and a shop do not owe each other the same answer about
+`Bytespider`, and a team that disagrees today has to fork the binary. A policy file makes
+disagreement cheap and, more importantly, **written down**: the file says who decided what, and the
+advice explains itself against it.
+
+⚠️ JSON, not YAML: a YAML parser is a dependency, and zero dependencies is an invariant
+([CLAUDE.md](CLAUDE.md)).
+
+**Done when:** `--policy policy.json` can move a UA pattern to another family or force
+allow/block/review, the reasoning line says which rule fired and whether it came from the file or
+the defaults, an unknown key or an unreachable pattern is an error rather than silence, and a test
+covers an override that contradicts the built-in table.
+
+### `check-expect` — verify what got deployed is what was advised
+
+- **status**: open
+- **priority**: medium
+- **labels**: check, ci
+- **milestone**: v0.4.0 — Your policy, verified continuously
+
+Today `advise` produces a file and `check` verifies a fixed set of expectations. Nothing verifies
+the *specific* decisions a team made: block these four, keep these two — which is exactly what
+someone silently reverts when they regenerate the file from a copied list, and exactly what a CDN
+serves a stale copy of. This closes the loop advise → deploy → verify.
+
+**Done when:** `check --expect policy.json` (the same file as `--policy`) reports per-decision
+pass/fail with the deployed file's own lines quoted, exits 1 on any divergence, and is covered
+against a local server serving a file that satisfies some decisions and not others.
+
+### `crawler-mix-diff` — compare two observations and say what changed
+
+- **status**: open
+- **priority**: medium
+- **labels**: advise
+- **milestone**: v0.4.0 — Your policy, verified continuously
+
+A share is a snapshot; the decision to block usually hinges on a direction. A crawler at 0.4% that
+tripled this month is a different problem from one that has sat at 0.4% for a year, and today the
+tool cannot tell them apart — so it says "below the threshold, leave it commented" to both.
+
+**Done when:** `advise --compare previous.json` (a stored `--json` document) reports new, grown,
+shrunk and vanished crawlers with the deltas, a crawler under `MinCandidateShare` that grew sharply
+is promoted to `REVIEW` with the growth as its reason, and a test covers all four transitions.
+
+### `report-html` — a self-contained visual report
+
+- **status**: open
+- **priority**: high
+- **labels**: report, ux
+- **milestone**: v0.4.0 — Your policy, verified continuously
+
+The decision to block a crawler is rarely taken by the person running the command: it is taken by
+whoever reads the report attached to a ticket, and a 60-line terminal dump does not survive that
+trip. Today the only shareable artifact is a screenshot of a scrolling table — the volumes, which
+are the whole argument, have to be reconstructed in the reader's head.
+
+What it has to show, in the order a reader needs it: how much of the traffic is judged and how much
+is not (the browser slice is not a footnote — it is the honesty of the whole method), the decisions
+ranked by volume with the reason next to each, the share the advised blocks would remove, and the
+generated file itself. Bars sorted by volume with direct labels — **no pie chart**: the argument is
+"this one is worth more than those ten", which a pie makes unreadable at exactly the sizes that
+matter.
+
+⚠️ **Self-contained**: inline SVG and inline CSS, no JavaScript and no CDN. The artifact gets
+emailed, attached to a ticket and opened on a laptop with no network — a report that needs a
+CDN is a broken report. Which also rules out a chart library, consistent with the zero-dependency
+invariant.
+
+**Done when:** `advise --report report.html` writes one file that opens offline with no console
+errors and no external requests (asserted by a test that greps the output for `http://`, `https://`
+and `<script`), the numbers in the chart come from the same document `--json` emits (asserted
+against the same fixture, so the two renderings cannot disagree), the page prints to one or two
+tidy pages via a print stylesheet, and it reads correctly in both light and dark.
+
+### `report-pdf` — the same report as a PDF, from the same layout
+
+- **status**: open
+- **priority**: medium
+- **labels**: report, ux
+- **milestone**: v0.4.0 — Your policy, verified continuously
+
+HTML covers the reader who opens a link; a PDF covers the one who gets it in an attachment, files
+it, or puts it in front of someone who signs off on blocking a third of the crawler traffic. The
+trap is producing it a second way: two renderers drift, and then the numbers in the deck disagree
+with the numbers in the tool — which is exactly the credibility this report exists to have.
+
+So: **one layout model, two backends**. The bars, labels and tables are computed once; the HTML
+backend emits SVG, the PDF backend emits PDF drawing operators. No headless browser and no external
+converter — a report that only builds where Chrome is installed does not build in CI. Text stays
+text (base-14 fonts, no embedding, no dependency), so it is selectable and searchable rather than a
+picture of a report.
+
+**Done when:** `advise --report report.pdf` writes a valid PDF that opens in Preview and Acrobat
+with selectable text, the same input produces byte-identical output twice (so a report can be
+diffed in CI instead of eyeballed), a test asserts the header, the xref table and the trailer plus
+that every number present in the HTML report is present in the PDF, and a run with no
+`--report` flag behaves exactly as it does today.
 
 # Backlog (unscheduled)
 
