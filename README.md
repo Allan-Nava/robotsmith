@@ -139,7 +139,8 @@ advises what to write has to model how real crawlers behave, so it implements th
 ## Usage
 
 ```bash
-# Homebrew (tapped straight from this repo)
+# Homebrew (tapped straight from this repo — the formula is audited, installed and
+# tested on macOS by CI at every release, so a tap that fails is a red build, not your problem)
 brew tap Allan-Nava/robotsmith https://github.com/Allan-Nava/robotsmith
 brew install robotsmith
 

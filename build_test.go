@@ -84,3 +84,30 @@ func TestDockerImageRunsAsNobodyAndFromScratch(t *testing.T) {
 		t.Error("without .dockerignore the build context carries the git history into the image build")
 	}
 }
+
+// The formula is rewritten by a robot at tag time and installed by people days later: nobody ever
+// runs `brew install` in between. This checks the loop is closed by a workflow, on a real macOS
+// runner — a formula that only ever gets read is a formula that is only ever wrong in public.
+func TestHomebrewInstallIsVerifiedByAWorkflow(t *testing.T) {
+	w := readDoc(t, ".github/workflows/brew.yml")
+	for _, want := range []string{
+		"workflow_call",     // the release calls it after rewriting url/sha256
+		"pull_request",      // and a PR touching the formula gets the same gate
+		"macos-",            // Linuxbrew would not exercise what users actually run
+		"brew tap-new",      // ⚠️ `brew audit <path>` is disabled: the formula must live in a tap
+		"brew audit",        // metadata and style: what breaks a `brew tap`
+		"brew install",      // the build itself
+		"brew test",         // the formula's own test block, which asserts the exit codes
+		`"$TAP/robotsmith"`, // tap-qualified, or brew resolves another formula from its API
+	} {
+		if !strings.Contains(w, want) {
+			t.Errorf("brew.yml is missing %q", want)
+		}
+	}
+	// Calling it from the release is the whole point: the url/sha the robot just wrote are the
+	// ones that need proving, not the ones that were in the tree when the tag was cut.
+	r := readDoc(t, ".github/workflows/release.yml")
+	if !strings.Contains(r, "./.github/workflows/brew.yml") {
+		t.Error("release.yml must call brew.yml, or a released formula is never installed before a user tries")
+	}
+}

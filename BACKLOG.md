@@ -186,12 +186,14 @@ so a broken Dockerfile costs a red check, not a failed release.
 - **priority**: low
 - **labels**: packaging, ci
 - **milestone**: v0.2.0 — Fit for a pipeline
-- **ref**: [Formula/robotsmith.rb](Formula/robotsmith.rb)
+- **ref**: [Formula/robotsmith.rb](Formula/robotsmith.rb), [.github/workflows/brew.yml](.github/workflows/brew.yml)
 
 Tapped straight from this repository, so there is no second repo to keep alive. The formula's
 `url` and `sha256` are rewritten by the release workflow at tag time — a formula updated by hand
 goes stale after the first release nobody remembers to edit. Its `test do` block checks both ends of
-the contract (a clean file lints clean, a defect exits 1) at install time.
+the contract (a clean file lints clean, a defect exits 1) at install time. Since 2026-09-04 the whole
+tap-and-install path is exercised on a macOS runner — on a PR touching the formula, and again from the
+release after the robot rewrites the checksum, which is the version a user would be the first to break.
 
 ### `check-case-count-from-data` — the case count comes from the tables
 

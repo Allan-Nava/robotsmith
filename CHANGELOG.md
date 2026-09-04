@@ -22,6 +22,14 @@ consumers get exactly what a tag says. Pushing is always the maintainer's call, 
   so in its own header rather than looking right and doing nothing — the exact trap this tool
   exists for.
 
+### Changed
+- **`brew install` is now verified before a user runs it.**
+  [brew.yml](.github/workflows/brew.yml) taps the formula and runs `brew audit --strict --online`,
+  `brew install --build-from-source` and `brew test` on a macOS runner — on every PR touching
+  `Formula/`, and again from [release.yml](.github/workflows/release.yml) *after* the tag-time
+  rewrite of `url`/`sha256`, which is the pair that actually needs proving. The formula's `ldflags`
+  no longer repeat the `-s -w` that `std_go_args` already passes.
+
 _Next up: [v0.4.0 — Your policy, verified continuously](BACKLOG.md#v040--your-policy-verified-continuously)._
 
 ## [0.3.0] — 2026-09-04

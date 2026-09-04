@@ -250,6 +250,11 @@ Stated, not forgotten:
 - **2026-09-04** — the backlog is now projected onto GitHub issues automatically, reversing the
   "no sync on purpose" decision taken the same day (reasoning above), and the tool ships as a
   container image and a Homebrew formula.
+- **2026-09-04** — the Homebrew formula is installed and tested on macOS by CI, not just written.
+  The `url`/`sha256` in it are produced by a robot at tag time and consumed by people days later:
+  the gap between those two moments is where a broken `brew install` lives, and nothing was closing
+  it. The check runs *after* the release commit, on `main`, because the tag's tree still carries
+  the previous checksum.
 
 When you make a decision someone might want to reverse, add it here with the date and the reason.
 One line is enough.

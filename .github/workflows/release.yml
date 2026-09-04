@@ -81,3 +81,13 @@ jobs:
           fi
           git commit -m "brew: robotsmith ${TAG}"
           git push origin HEAD:main
+
+  # The formula the job above just wrote, installed on macOS exactly as a user would. It runs
+  # against `main`, not against the tag: the tag's tree still carries the previous url/sha256.
+  # A failure here does not un-publish the release — the binaries and the notes are already out —
+  # it tells the maintainer that `brew install` is broken before anyone reports it.
+  brew:
+    needs: release
+    uses: ./.github/workflows/brew.yml
+    with:
+      ref: main
