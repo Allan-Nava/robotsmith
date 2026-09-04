@@ -12,8 +12,6 @@ it** starting from the site's real traffic. Three commands: `check` (the file as
 
 ## Working rules (ALWAYS)
 
-Adapted from the `devops_hiway` conventions, cut down to what a single-binary repo actually needs.
-
 - **Every user-visible change gets a [CHANGELOG.md](CHANGELOG.md) entry** under `## [Unreleased]`
   (Keep a Changelog sections: Added / Changed / Fixed / Removed), **without being asked**. A
   release then moves that block under `vX.Y.Z` and tags `git tag -a vX.Y.Z`: **minor** for new
