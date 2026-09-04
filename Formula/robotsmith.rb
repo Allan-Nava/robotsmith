@@ -8,8 +8,8 @@
 class Robotsmith < Formula
   desc "Verifies a robots.txt and advises how to write it from your real traffic"
   homepage "https://github.com/Allan-Nava/robotsmith"
-  url "https://github.com/Allan-Nava/robotsmith/archive/refs/tags/v0.2.0.tar.gz"
-  sha256 "0000000000000000000000000000000000000000000000000000000000000000"
+  url "https://github.com/Allan-Nava/robotsmith/archive/refs/tags/v0.3.0.tar.gz"
+  sha256 "964ccf2f84d1bf4f93072e188444bcaf7f621dd7fd71ae97a31a88e2db98a0f6"
   license "MIT"
   head "https://github.com/Allan-Nava/robotsmith.git", branch: "main"
 
