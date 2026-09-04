@@ -142,6 +142,27 @@ to notice. A test now walks the real flag sets and the exit-code table and check
 that repeats them. This is deliberately narrow: it covers the facts a machine can check (flags,
 codes, schema strings), not the prose — the prose is reviewed by people.
 
+### The issues are a projection, and this reverses an earlier decision
+When the backlog was written it explicitly said no automatic sync to issues: 14 items are not 140,
+and the machinery looked like it would cost more than it bought. That was wrong in one respect — a
+todo that lives only in a file gets read when someone opens the file, and the items most worth doing
+are the ones nobody opens the file for. So the file stays the source of truth (it travels with the
+code, in the same review, and it can rebuild the issues at any time — the reverse is not true) and
+the issues became a projection.
+
+What keeps it safe rather than clever: matching is by a stable `id` carried in a fingerprint comment,
+never by title, so editing prose cannot spawn a twin; dry run is the default, because a tool that
+writes to a tracker by accident gets run once and never again; and the sync refuses to run on a file
+that does not lint, because a typo in a milestone title would silently create a second milestone.
+
+### Packaging: brew and a scratch image
+The most likely place this tool runs is somebody's CI, where a Go toolchain is an unwanted
+dependency — hence a container image, and hence `scratch` plus the static binary and the CA bundle:
+no shell, no package manager, `nobody` as the user. The Homebrew formula is tapped from this
+repository instead of a second `homebrew-tap` repo, because a second repo is a second thing to keep
+alive; its checksum is rewritten by the release workflow, because a formula updated by hand goes
+stale after the first release nobody remembers to edit.
+
 ## Non-goals
 
 Stated, not forgotten:
@@ -168,6 +189,9 @@ Stated, not forgotten:
   schemas, `lint --strict`, logs from stdin and gzip, CLI integration tests on the exit-code
   contract, release automation with the version from the tag, and a gate that keeps the docs
   honest. Each decision above; backlog in [BACKLOG.md](BACKLOG.md).
+- **2026-09-04** — the backlog is now projected onto GitHub issues automatically, reversing the
+  "no sync on purpose" decision taken the same day (reasoning above), and the tool ships as a
+  container image and a Homebrew formula.
 
 When you make a decision someone might want to reverse, add it here with the date and the reason.
 One line is enough.

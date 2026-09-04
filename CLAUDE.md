@@ -47,6 +47,8 @@ gofmt -l .                     # must print NOTHING: CI fails if it prints anyth
 go vet ./...
 go run . advise --ua-counts ua.txt --host example.com   # try it by hand
 zcat access.log.*.gz | go run . advise --log -          # rotated logs, off the pipe
+go run ./cmd/backlog-sync --repo Allan-Nava/robotsmith  # dry run of the issue projection
+docker build -t robotsmith . && docker run --rm robotsmith version
 ```
 
 CI ([.github/workflows/ci.yml](.github/workflows/ci.yml)) runs exactly: `gofmt -l`, `go vet`,
@@ -88,6 +90,8 @@ Rules that hold for the tests in this repo:
 | [internal/check](internal/check/) | fetch, comparison with the origin, expected cases | The case list is data, not logic |
 | [internal/advise](internal/advise/) | UA classification → policy → file | Does no I/O |
 | [internal/report](internal/report/) | the `--json` documents | Decides nothing; only renders |
+| [internal/backlog](internal/backlog/) | parses and lints `BACKLOG.md`, plans the issue sync | Does no I/O and knows no HTTP |
+| [cmd/backlog-sync](cmd/backlog-sync/) | the GitHub side of that projection | Decides nothing the package did not plan |
 
 The parser is kept separate from the policy **on purpose**: matching correctness is verifiable
 against the RFC, policy is an opinion. Do not merge them into one function.
@@ -180,8 +184,10 @@ Nothing here needs a person to remember it:
 | Trigger | Workflow | What it does |
 |---|---|---|
 | push / PR | [ci.yml](.github/workflows/ci.yml) | `gofmt -l`, `go vet`, `go test -race`, `go build`, cross-compile of the four release targets, coverage summary |
+| push / PR touching the image | [docker.yml](.github/workflows/docker.yml) | builds the image on a PR, pushes it to GHCR on `main` (`edge`) and on a tag (`X.Y.Z`, `X.Y`, `latest`), multi-arch, then smoke-tests it |
+| PR / push touching `BACKLOG.md` | [backlog.yml](.github/workflows/backlog.yml) | **dry run** on a PR, applies on `main`: projects the backlog onto GitHub issues via [cmd/backlog-sync](cmd/backlog-sync/) |
 | push to `main` touching `docs/` | [pages.yml](.github/workflows/pages.yml) | publishes `docs/` to GitHub Pages (no Jekyll, no build step) |
-| tag `v*` | [release.yml](.github/workflows/release.yml) | runs the suite, cross-compiles linux/darwin × amd64/arm64 with the version from the tag, extracts the notes from `CHANGELOG.md` (**fails if the section is missing**), publishes binaries + `checksums.txt` |
+| tag `v*` | [release.yml](.github/workflows/release.yml) | runs the suite, cross-compiles linux/darwin × amd64/arm64 with the version from the tag, extracts the notes from `CHANGELOG.md` (**fails if the section is missing**), publishes binaries + `checksums.txt`, then rewrites `url`/`sha256` in [Formula/robotsmith.rb](Formula/robotsmith.rb) and commits it |
 | monthly | [dependabot.yml](.github/dependabot.yml) | bumps the workflow actions (Go modules are not listed: zero dependencies is an invariant) |
 
 Cutting a release is therefore: write the CHANGELOG section, `git tag -a vX.Y.Z`, and let the

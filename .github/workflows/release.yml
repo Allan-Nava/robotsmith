@@ -61,3 +61,23 @@ jobs:
             --title "robotsmith $GITHUB_REF_NAME" \
             --notes-file notes.md \
             dist/*
+
+      # The formula points at the source tarball GitHub generates for the tag. Its checksum only
+      # exists once the tag does, so it is filled in here — a formula updated by hand goes stale
+      # after the first release nobody remembers to edit.
+      - name: Update the Homebrew formula
+        run: |
+          set -euo pipefail
+          TAG="$GITHUB_REF_NAME"
+          URL="https://github.com/${GITHUB_REPOSITORY}/archive/refs/tags/${TAG}.tar.gz"
+          SHA="$(curl -fsSL "$URL" | sha256sum | cut -d" " -f1)"
+          sed -i -E "s#^(  url \").*(\")#\1${URL}\2#" Formula/robotsmith.rb
+          sed -i -E "s#^(  sha256 \").*(\")#\1${SHA}\2#" Formula/robotsmith.rb
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Formula/robotsmith.rb
+          if git diff --cached --quiet; then
+            echo "formula already current"; exit 0
+          fi
+          git commit -m "brew: robotsmith ${TAG}"
+          git push origin HEAD:main

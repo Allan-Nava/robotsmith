@@ -135,8 +135,18 @@ advises what to write has to model how real crawlers behave, so it implements th
 ## Usage
 
 ```bash
+# Homebrew (tapped straight from this repo)
+brew tap Allan-Nava/robotsmith https://github.com/Allan-Nava/robotsmith
+brew install robotsmith
+
+# Docker — scratch image, runs as nobody, ~7 MB
+docker run --rm ghcr.io/allan-nava/robotsmith check example.com
+docker run --rm -v "$PWD:/w:ro" ghcr.io/allan-nava/robotsmith lint /w/robots.txt
+
+# Go
 go install github.com/Allan-Nava/robotsmith@latest
-# or grab a binary (linux/darwin, amd64/arm64, with checksums) from the Releases page
+
+# or a prebuilt binary (linux/darwin × amd64/arm64, with checksums) from the Releases page
 
 # verify: the file is there, it is fresh, it says the right thing (32 cases)
 robotsmith check example.com --origin https://internal.origin/robots.txt

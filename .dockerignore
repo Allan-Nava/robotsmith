@@ -1,0 +1,9 @@
+# The build context is copied into the daemon: the git history, the site and the docs have no
+# business being there.
+.git
+.github
+docs
+*.md
+Formula
+dist
+cover.out

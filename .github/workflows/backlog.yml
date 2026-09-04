@@ -1,0 +1,50 @@
+# Projects BACKLOG.md onto GitHub issues. The file is the source of truth; the issues are a
+# projection that can be rebuilt at any time.
+#
+# ⚠️ On a pull request this runs as a DRY RUN: it prints the plan and writes nothing. Only a push
+# to main (or a manual run) applies it — a tool that writes to a tracker by accident gets run once
+# and never again.
+name: backlog
+on:
+  push:
+    branches: [main]
+    paths: ['BACKLOG.md', 'internal/backlog/**', 'cmd/backlog-sync/**', '.github/workflows/backlog.yml']
+  pull_request:
+    paths: ['BACKLOG.md', 'internal/backlog/**', 'cmd/backlog-sync/**']
+  workflow_dispatch:
+    inputs:
+      apply:
+        description: Write to GitHub (unchecked = dry run)
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: backlog          # two syncs at once could both decide to create the same issue
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+
+      # The parser and the lint are tested code: run their tests before trusting them with issues.
+      - run: go test ./internal/backlog/
+
+      - name: Plan (dry run)
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: go run ./cmd/backlog-sync --repo "$GITHUB_REPOSITORY"
+
+      - name: Apply
+        if: github.event_name == 'push' || inputs.apply
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: go run ./cmd/backlog-sync --repo "$GITHUB_REPOSITORY" --apply

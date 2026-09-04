@@ -1,13 +1,21 @@
 # Backlog & roadmap — single source of truth
 
 Every todo for this repository lives here, grouped by **milestone**. This file *is* the roadmap:
-there is no generated roadmap page, on purpose — one file cannot drift out of sync with itself, and
-this repo is small enough that a generator would cost more than it buys.
+there is no generated roadmap page, on purpose — one file cannot drift out of sync with itself.
 
-GitHub milestones mirror the headings below, character for character
+**The GitHub issues are a projection of this file, kept in sync automatically.**
+[`cmd/backlog-sync`](cmd/backlog-sync/) parses it and opens, updates, reopens or closes one issue
+per item; [.github/workflows/backlog.yml](.github/workflows/backlog.yml) runs it as a **dry run** on
+every pull request and applies it on a push to `main`. The join key is the item's `id`, carried in a
+fingerprint comment inside the issue body — so editing a title updates the issue instead of opening
+a twin, and the projection can be thrown away and rebuilt at any time. The file can never be
+reconstructed from the issues, which is why it is the source and they are not.
+
+Edit the file, not the issue: the next sync overwrites anything changed on the GitHub side.
+Milestones mirror the headings below, character for character
 ([v0.2.0](https://github.com/Allan-Nava/robotsmith/milestone/1),
-[v0.3.0](https://github.com/Allan-Nava/robotsmith/milestone/2)). Issues are optional; when one
-exists it is linked in the item's `ref`.
+[v0.3.0](https://github.com/Allan-Nava/robotsmith/milestone/2)) — the sync matches them by exact
+title and creates a missing one, which is why a title with no matching heading fails the lint.
 
 ## Writing an item
 
@@ -19,13 +27,18 @@ exists it is linked in the item's `ref`.
   closes it. Since work here is test-first ([CLAUDE.md](CLAUDE.md)), "Done when" is almost always
   "a test that failed first now passes".
 - Closing a todo: set `status: done` (keeps the history) and add the line to
-  [CHANGELOG.md](CHANGELOG.md). Remove an item only if it was never released.
+  [CHANGELOG.md](CHANGELOG.md). Remove an item only if it was never released — in both cases the
+  sync closes the issue, with a comment saying why.
+
+The file is linted by `go test ./internal/backlog/`: duplicate ids, unknown statuses, an open item
+with no **Done when:**, a milestone that matches no heading, and a summary table whose counts
+disagree with the items all fail the build. The counts below are therefore checked, not trusted.
 
 ## Roadmap at a glance
 
 | Milestone | Theme | Open | Done |
 |---|---|---:|---:|
-| [v0.2.0 — Fit for a pipeline](#v020--fit-for-a-pipeline) | make the tool consumable by machines, and cut real releases | 0 | 7 |
+| [v0.2.0 — Fit for a pipeline](#v020--fit-for-a-pipeline) | make the tool consumable by machines, and cut real releases | 0 | 10 |
 | [v0.3.0 — Sharper advice](#v030--sharper-advice) | better answers on the same input | 4 | 0 |
 | [Backlog (unscheduled)](#backlog-unscheduled) | worth doing, not worth scheduling | 3 | 0 |
 
@@ -137,6 +150,46 @@ appear verbatim in [README.md](README.md) and in `docs/index.html`.
 
 **Done when:** a test (or a small CI step) fails when the exit codes and the flags documented in
 `README.md` / `docs/index.html` no longer match the ones the binary actually exposes.
+
+### `backlog-to-issues` — project the backlog onto GitHub issues
+
+- **status**: done
+- **priority**: medium
+- **labels**: ci, automation
+- **milestone**: v0.2.0 — Fit for a pipeline
+- **ref**: [cmd/backlog-sync](cmd/backlog-sync/), [internal/backlog](internal/backlog/), [.github/workflows/backlog.yml](.github/workflows/backlog.yml)
+
+A todo that lives only in a file gets read when someone opens the file; one that lives only in a
+tracker loses the reasoning that came with it. The file stays the source — it travels with the code,
+in the same review — and the issues become a projection that can be rebuilt at any time. Idempotent
+by construction: matching is by the item `id` carried in a fingerprint comment, never by title.
+Dry run is the default, and the sync refuses to run on a file that does not lint.
+
+### `docker-image` — publish a container image
+
+- **status**: done
+- **priority**: medium
+- **labels**: packaging, ci
+- **milestone**: v0.2.0 — Fit for a pipeline
+- **ref**: [Dockerfile](Dockerfile), [.github/workflows/docker.yml](.github/workflows/docker.yml)
+
+The most likely place this tool runs is somebody's CI, where a Go toolchain is an unwanted
+dependency. `scratch` plus the static binary and the CA bundle: no shell, no package manager, runs
+as `nobody`, and the exit-code contract survives the trip. Built (not pushed) on every pull request
+so a broken Dockerfile costs a red check, not a failed release.
+
+### `homebrew-formula` — installable with brew
+
+- **status**: done
+- **priority**: low
+- **labels**: packaging, ci
+- **milestone**: v0.2.0 — Fit for a pipeline
+- **ref**: [Formula/robotsmith.rb](Formula/robotsmith.rb)
+
+Tapped straight from this repository, so there is no second repo to keep alive. The formula's
+`url` and `sha256` are rewritten by the release workflow at tag time — a formula updated by hand
+goes stale after the first release nobody remembers to edit. Its `test do` block checks both ends of
+the contract (a clean file lints clean, a defect exits 1) at install time.
 
 ### `check-case-count-from-data` — the case count comes from the tables
 

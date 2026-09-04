@@ -20,9 +20,24 @@ consumers get exactly what a tag says. Pushing is always the maintainer's call, 
   stamped in via `-ldflags`, takes the notes from this file (and refuses to publish when the section
   is missing) and publishes binaries with checksums. CI cross-compiles the same targets on every
   pull request; Dependabot keeps the actions current.
+- **Backlog → GitHub issues, automatically**: [internal/backlog](internal/backlog/) parses and lints
+  `BACKLOG.md`, [cmd/backlog-sync](cmd/backlog-sync/) projects it onto issues (create / update /
+  reopen / close), matched by the item `id` in a fingerprint comment so an edited title updates the
+  issue instead of opening a twin. Dry run is the default; the workflow runs it as a dry run on
+  every pull request and applies it on `main`. The lint also fails when the roadmap table's counts
+  disagree with the items.
+- **Container image**: `scratch` + static binary + CA bundle, running as `nobody`
+  ([Dockerfile](Dockerfile)), published to `ghcr.io/allan-nava/robotsmith` on tags (`X.Y.Z`, `X.Y`,
+  `latest`) and on `main` (`edge`), multi-arch amd64/arm64, built on every pull request and
+  smoke-tested after each push.
+- **Homebrew formula** ([Formula/robotsmith.rb](Formula/robotsmith.rb)), tapped straight from this
+  repo — `brew tap Allan-Nava/robotsmith https://github.com/Allan-Nava/robotsmith`. Its `url` and
+  `sha256` are rewritten by the release workflow at tag time.
 - **A documentation gate**: tests assert that every flag the binary exposes is documented (and that
   the docs expose no flag that does not exist), that the exit-code contract is repeated correctly in
-  `README.md` and `docs/index.html`, and that the JSON schemas are documented.
+  `README.md` and `docs/index.html`, and that the JSON schemas are documented. It also asserts that
+  the Go version agrees across `go.mod`, both workflows and the `Dockerfile`, that every documented
+  install method has a file behind it, and that the image stays `scratch`-based and non-root.
 - Integration tests for the whole CLI (`run()` with injected streams): the `0/1/2/4` contract is now
   asserted case by case — coverage of `main` 33% → 84.5%.
 - Tests for `internal/check` on a local `httptest` server (URL normalisation, healthy file, empty
