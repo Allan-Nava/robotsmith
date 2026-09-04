@@ -1,0 +1,69 @@
+# Runs robotsmith against its own published site, weekly. A tool that advises about robots.txt and
+# never looks at its own is an argument nobody has to believe.
+#
+# ⚠️ What this job may and may not fail on. The file that governs this site is
+# https://allan-nava.github.io/robots.txt — the HOST ROOT, owned by another repo, shared with every
+# other project page on that account. Its POLICY is therefore not this repo's call, and failing on
+# it would be a build that is red forever and gets ignored. So:
+#
+#   ours to fix, so it fails the job    → our published robots.txt and sitemap.xml, and any
+#                                         STRUCTURAL defect in the host-root file (a broken record
+#                                         hurts every site on the host, and is actionable)
+#   not ours, so it is reported only    → whether the host-root policy blocks the crawlers this
+#                                         tool would block
+name: dogfood
+on:
+  schedule:
+    - cron: '17 6 * * 1'      # Monday morning: the published file is changed by other people
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['docs/robots.txt', 'docs/sitemap.xml', '.github/workflows/dogfood.yml']
+
+permissions:
+  contents: read
+
+jobs:
+  eat-it:
+    runs-on: ubuntu-latest
+    env:
+      SITE: https://allan-nava.github.io/robotsmith
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+      - run: go build -o robotsmith .
+
+      # 1. Ours to fix: the copy we publish must pass our own linter with warnings on too.
+      - name: Our own file, strictly
+        run: ./robotsmith lint docs/robots.txt --strict
+
+      # 2. Ours to fix: the host-root file lists only sitemaps that answer 200. If ours does not,
+      #    this site silently never appears there.
+      - name: Our sitemap answers
+        run: |
+          set -euo pipefail
+          code="$(curl -sS -o /dev/null -w '%{http_code}' "$SITE/sitemap.xml")"
+          echo "sitemap.xml → HTTP $code"
+          test "$code" = "200"
+
+      # 3. Ours to fix: a structural defect in the shared host-root file breaks every site on the
+      #    host, and whoever owns that repo can act on it.
+      - name: The host-root file is structurally sound
+        run: ./robotsmith lint https://allan-nava.github.io/robots.txt
+
+      # 4. Not ours: the policy of a shared host root is the account owner's call. Reported, never
+      #    failed — a check that cannot be acted on here would just teach people to ignore red.
+      - name: Host-root policy, for information only
+        run: |
+          {
+            echo '## robotsmith against its own host'
+            echo
+            echo 'The file that governs this site is the HOST ROOT, shared with every project page'
+            echo 'on the account: its policy is not this repo'"'"'s to set. Reported, not enforced.'
+            echo
+            echo '```'
+            ./robotsmith check allan-nava.github.io --sitemaps || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

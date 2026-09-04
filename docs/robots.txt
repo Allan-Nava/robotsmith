@@ -1,0 +1,103 @@
+# robots.txt for robotsmith's own site — https://allan-nava.github.io/robotsmith/
+#
+# ⚠️ READ THIS FIRST: at this address the file governs NOTHING. Crawlers read
+#    robots.txt only from the host root, so the file that actually speaks for
+#    this site is https://allan-nava.github.io/robots.txt — a project page
+#    cannot own its own robots.txt. This copy exists for two honest reasons:
+#
+#      1. it is what this project would publish if it owned an origin, held to
+#         its own standard by its own tests (`go test .`): no blank line inside
+#         a group, no `Allow: /` before the prohibitions, and all 32 expected
+#         cases satisfied;
+#      2. its `Sitemap:` line is the thing the host-root file syncs from — that
+#         file lists only sitemaps that answer 200, which is why this site ships
+#         docs/sitemap.xml.
+#
+#    A file that looks right and changes nothing is the trap this whole tool is
+#    about, so it says so out loud instead of decorating the directory.
+#
+# The policy below is robotsmith's own default, applied to itself: whoever brings
+# visits gets through, whoever takes without giving does not.
+
+# ── Allowed on purpose: they bring visits ───────────────────────────
+# search engines
+User-agent: Googlebot
+User-agent: Google-InspectionTool
+User-agent: Storebot-Google
+User-agent: bingbot
+User-agent: DuckDuckBot
+User-agent: Applebot
+User-agent: YandexBot
+User-agent: Baiduspider
+User-agent: SeznamBot
+User-agent: PetalBot
+Allow: /
+
+# link previews: a shared link that renders is a visit
+User-agent: facebookexternalhit
+User-agent: Twitterbot
+User-agent: LinkedInBot
+User-agent: WhatsApp
+User-agent: TelegramBot
+User-agent: Slackbot
+User-agent: Discordbot
+User-agent: Pinterest
+User-agent: redditbot
+Allow: /
+
+# fetches a person triggered, and the crawler behind AI search results:
+# blocking these costs visibility without removing any load
+User-agent: ChatGPT-User
+User-agent: OAI-SearchBot
+Allow: /
+
+# ── Blocked: they take content without bringing visits ──────────────
+User-agent: GPTBot
+User-agent: CCBot
+User-agent: ClaudeBot
+User-agent: anthropic-ai
+User-agent: PerplexityBot
+User-agent: Bytespider
+User-agent: Amazonbot
+User-agent: meta-externalagent
+User-agent: YouBot
+User-agent: Diffbot
+User-agent: Timpibot
+User-agent: omgili
+User-agent: ImagesiftBot
+Disallow: /
+
+# ⚠️ These two are not User-Agents: they exist ONLY as robots.txt tokens, and
+#    mean "do not use my content for training". A rule matching them against a
+#    UA would do nothing at all — here is where they belong.
+User-agent: Google-Extended
+User-agent: Applebot-Extended
+Disallow: /
+
+# third-party SEO analysis: it crawls the site to sell reports about it
+User-agent: SemrushBot
+User-agent: AhrefsBot
+User-agent: MJ12bot
+User-agent: DotBot
+User-agent: BLEXBot
+User-agent: DataForSeoBot
+User-agent: MajesticSEO
+User-agent: ScreamingFrogSEOSpider
+User-agent: SISTRIX
+User-agent: serpstatbot
+User-agent: Barkrowler
+Disallow: /
+
+# unrecognised but heavy on the origin this documentation is served from
+User-agent: YisouSpider
+Disallow: /
+
+# ── General rules ───────────────────────────────────────────────────
+# A documentation site has nothing private: everything published here is meant
+# to be read. Nothing to forbid, and saying so explicitly beats an empty file —
+# 200 with 0 bytes means "everything allowed", which is easy to mistake for the
+# opposite.
+User-agent: *
+Disallow:
+
+Sitemap: https://allan-nava.github.io/robotsmith/sitemap.xml

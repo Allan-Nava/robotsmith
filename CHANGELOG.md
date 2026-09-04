@@ -7,7 +7,22 @@ consumers get exactly what a tag says. Pushing is always the maintainer's call, 
 
 ## [Unreleased]
 
-_Nothing yet. Next up: [v0.4.0 — Your policy, verified continuously](BACKLOG.md#v040--your-policy-verified-continuously)._
+### Added
+- **The tool now eats its own cooking.** [docs/robots.txt](docs/robots.txt) is the file this project
+  would publish for its own site, held to robotsmith's standard by robotsmith's tests on every run:
+  clean lint, and all 32 expected cases satisfied. [docs/sitemap.xml](docs/sitemap.xml) ships too,
+  because the host-root file that governs this site lists only sitemaps answering 200.
+  [dogfood.yml](.github/workflows/dogfood.yml) runs weekly against the published site: it fails on
+  what this repo can fix (our own file, our own sitemap, a *structural* defect in the shared
+  host-root file) and only **reports** the host-root policy, which belongs to the account owner —
+  a red build nobody here can act on is a red build everybody learns to ignore.
+
+  ⚠️ Worth writing down: this is a project page, and crawlers read robots.txt **only from the host
+  root**, so `allan-nava.github.io/robotsmith/robots.txt` governs nothing. The published copy says
+  so in its own header rather than looking right and doing nothing — the exact trap this tool
+  exists for.
+
+_Next up: [v0.4.0 — Your policy, verified continuously](BACKLOG.md#v040--your-policy-verified-continuously)._
 
 ## [0.3.0] — 2026-09-04
 

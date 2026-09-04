@@ -361,6 +361,14 @@ behaviour change starts from a failing test, and every bug found gets a test bef
 suite runs with <code>-race</code> in CI along with <code>gofmt -l</code>, <code>go vet</code> and
 <code>go build</code>; no test touches the network (<code>httptest</code> only) or writes outside a
 temporary directory.</p>
+<p><b>It eats its own cooking.</b> This site publishes
+<a href="robots.txt">its own robots.txt</a>, held to robotsmith's standard by robotsmith's tests on
+every run — clean lint, all 32 expected cases — and a weekly job runs the tool against the published
+site. One thing that file says out loud, because it is the trap in miniature: crawlers read
+robots.txt <b>only from the host root</b>, so on a GitHub project page a file at
+<code>/&lt;repo&gt;/robots.txt</code> is correct, present, and governs nothing. The copy here is an
+example plus a <code>Sitemap:</code> pointer; the file that actually speaks for this page is the one
+at the host root.</p>
 <p><b>The backlog is projected, not retyped.</b> The todos live in one file next to the code
 (<code>BACKLOG.md</code>), and a sync opens, updates, reopens or closes one GitHub issue per item —
 matched by a stable id carried in the issue body, so editing a title updates the issue instead of

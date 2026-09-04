@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- The host-root robots.txt at allan-nava.github.io lists only per-project sitemaps that answer
+     200, so this file is what gets this site listed there. One page, one entry: a sitemap that
+     promises URLs it does not have wastes crawl budget. -->
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url>
+    <loc>https://allan-nava.github.io/robotsmith/</loc>
+    <lastmod>2026-09-04</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>1.0</priority>
+  </url>
+</urlset>
