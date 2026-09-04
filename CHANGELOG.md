@@ -8,6 +8,23 @@ consumers get exactly what a tag says. Pushing is always the maintainer's call, 
 ## [Unreleased]
 
 ### Added
+- **`--json` on `check`, `lint` and `advise`** (`internal/report`): one document on stdout, nothing
+  else there, with a pinned `schema` field (`robotsmith.check/1`, `robotsmith.lint/1`,
+  `robotsmith.advise/1`). The exit code is unchanged; the advised file travels inside the advise
+  document so a consumer never has to run the command twice.
+- **`lint --strict`**: warnings fail too, for a team that wants the file correct under a first-match
+  parser as well. The default stays "only an ERROR fails".
+- **`advise --log -`** reads stdin, and **gzipped logs are decompressed transparently** — detected
+  by the gzip magic bytes, not by the file name, because rotated names lie.
+- **Release automation**: a `v*` tag cross-compiles linux/darwin (amd64/arm64) with the version
+  stamped in via `-ldflags`, takes the notes from this file (and refuses to publish when the section
+  is missing) and publishes binaries with checksums. CI cross-compiles the same targets on every
+  pull request; Dependabot keeps the actions current.
+- **A documentation gate**: tests assert that every flag the binary exposes is documented (and that
+  the docs expose no flag that does not exist), that the exit-code contract is repeated correctly in
+  `README.md` and `docs/index.html`, and that the JSON schemas are documented.
+- Integration tests for the whole CLI (`run()` with injected streams): the `0/1/2/4` contract is now
+  asserted case by case — coverage of `main` 33% → 84.5%.
 - Tests for `internal/check` on a local `httptest` server (URL normalisation, healthy file, empty
   file, deindexing flag, CDN/origin divergence, 404): coverage 0 → 88.9%.
 - Tests for the CLI plumbing in `main` (argument reordering, `uniq -c` parsing, access-log parsing):
@@ -19,6 +36,10 @@ consumers get exactly what a tag says. Pushing is always the maintainer's call, 
   (`docs/index.html`), deployed by [.github/workflows/pages.yml](.github/workflows/pages.yml).
 
 ### Changed
+- `robotsmith version` reports the tag *and* the commit (dirty marker included); the version is no
+  longer a constant, so a development build cannot claim to be a release.
+- `main()` is one line: the CLI lives in `run(args, stdout, stderr)`, which is what made the exit
+  codes testable.
 - **Whole repository translated to English** — identifiers, comments, CLI output, generated file and
   documentation. Rationale in [INTENT.md](INTENT.md) under *English everywhere*.
 - `lint` severities are printed as `ERROR` / `WARNING`; thousands in the generated file are grouped

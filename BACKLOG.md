@@ -25,7 +25,7 @@ exists it is linked in the item's `ref`.
 
 | Milestone | Theme | Open | Done |
 |---|---|---:|---:|
-| [v0.2.0 — Fit for a pipeline](#v020--fit-for-a-pipeline) | make the tool consumable by machines, and cut real releases | 6 | 1 |
+| [v0.2.0 — Fit for a pipeline](#v020--fit-for-a-pipeline) | make the tool consumable by machines, and cut real releases | 0 | 7 |
 | [v0.3.0 — Sharper advice](#v030--sharper-advice) | better answers on the same input | 4 | 0 |
 | [Backlog (unscheduled)](#backlog-unscheduled) | worth doing, not worth scheduling | 3 | 0 |
 
@@ -33,16 +33,21 @@ exists it is linked in the item's `ref`.
 
 # v0.2.0 — Fit for a pipeline
 
+> ✅ **Complete in the working tree** — every item below is implemented and tested. The milestone
+> closes when the maintainer pushes and tags `v0.2.0`: the release workflow then builds the binaries
+> and takes its notes from [CHANGELOG.md](CHANGELOG.md).
+
 **Goal**: `robotsmith` runs unattended in someone else's CI. That means machine-readable output, a
 strict mode, logs arriving the way logs actually arrive, and installable binaries — plus the tests
 that make those promises checkable.
 
 ### `json-output` — `--json` on all three commands
 
-- **status**: open
+- **status**: done
 - **priority**: high
 - **labels**: cli, ci
 - **milestone**: v0.2.0 — Fit for a pipeline
+- **ref**: `internal/report`, `TestJSONOutputIsValidAndCarriesItsSchema`
 
 Exit codes say *whether* something is wrong; a pipeline that wants to comment on a PR, open a
 ticket or trend the numbers needs *what*. Today that means parsing prose that
@@ -56,10 +61,11 @@ still goes to stdout with the JSON on stdout only when `--json` is given.
 
 ### `lint-strict` — `--strict`: warnings fail too
 
-- **status**: open
+- **status**: done
 - **priority**: medium
 - **labels**: cli, ci
 - **milestone**: v0.2.0 — Fit for a pipeline
+- **ref**: `TestExitCodeContract` (case "lint --strict on a warning")
 
 `lint` exits 1 only on `ERROR`, which is right by default: `Allow: /` in the wrong place is legal
 and works with Google. But a team that has decided the file must be correct under *both* parsers
@@ -70,10 +76,11 @@ covers both.
 
 ### `logs-stdin-gzip` — read logs from stdin and from `.gz`
 
-- **status**: open
+- **status**: done
 - **priority**: high
 - **labels**: cli, ux
 - **milestone**: v0.2.0 — Fit for a pipeline
+- **ref**: [logs_test.go](logs_test.go)
 
 Real access logs are rotated and gzipped, and they usually arrive down a pipe
 (`zcat access.log.*.gz | robotsmith advise --log -`). Today `--log` takes a path and the file has to
@@ -86,10 +93,11 @@ fixture built in `t.TempDir()`.
 
 ### `cli-integration-tests` — cover `cmdCheck` / `cmdLint` / `cmdAdvise`
 
-- **status**: open
+- **status**: done
 - **priority**: high
 - **labels**: tests
 - **milestone**: v0.2.0 — Fit for a pipeline
+- **ref**: [cli_test.go](cli_test.go) — `main` coverage 84.5%
 
 `main` sits at 33% coverage: the three `cmd*` functions — where exit codes, stdout/stderr split and
 flag handling live, i.e. exactly the contract other people's pipelines depend on — are untested.
@@ -101,10 +109,11 @@ the `0/1/2/4` contract is asserted case by case.
 
 ### `release-workflow` — tagged releases with binaries, version from the tag
 
-- **status**: open
+- **status**: done
 - **priority**: medium
 - **labels**: ci, release
 - **milestone**: v0.2.0 — Fit for a pipeline
+- **ref**: [.github/workflows/release.yml](.github/workflows/release.yml), [version_test.go](version_test.go)
 
 `version` is a constant in [main.go](main.go): a binary built from any commit claims to be `0.1.0`,
 so a bug report cannot be tied to code. And there are no downloadable binaries, which forces a Go
@@ -116,10 +125,11 @@ tag plus the commit, and a plain `go build` still reports a sensible development
 
 ### `docs-cli-sync-gate` — CI catches documentation that drifts from the CLI
 
-- **status**: open
+- **status**: done
 - **priority**: low
 - **labels**: ci, docs
 - **milestone**: v0.2.0 — Fit for a pipeline
+- **ref**: [docs_test.go](docs_test.go)
 
 The `31` vs `32` cases bug was exactly this class: the docs stated a number the code no longer
 produced, and nothing noticed. The same exposure exists for the exit codes and the flag list, which

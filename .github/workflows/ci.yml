@@ -16,3 +16,13 @@ jobs:
       - run: go vet ./...
       - run: go test -race ./...
       - run: go build ./...
+      # The release builds four targets; catching a platform-specific break here costs seconds,
+      # catching it during a release costs a retracted tag.
+      - name: Cross-compile the release targets
+        run: |
+          set -euo pipefail
+          for target in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64; do
+            CGO_ENABLED=0 GOOS="${target%/*}" GOARCH="${target#*/}" go build -o /dev/null .
+          done
+      - name: Coverage summary
+        run: go test -coverprofile=cover.out ./... >/dev/null && go tool cover -func=cover.out | tail -1

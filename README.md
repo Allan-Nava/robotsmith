@@ -136,6 +136,7 @@ advises what to write has to model how real crawlers behave, so it implements th
 
 ```bash
 go install github.com/Allan-Nava/robotsmith@latest
+# or grab a binary (linux/darwin, amd64/arm64, with checksums) from the Releases page
 
 # verify: the file is there, it is fresh, it says the right thing (32 cases)
 robotsmith check example.com --origin https://internal.origin/robots.txt
@@ -146,14 +147,61 @@ robotsmith lint ./robots.txt
 # advice from the logs (HAProxy or nginx), preserving the current rules
 robotsmith advise --log access.log --current https://example.com/robots.txt --host example.com --out robots.txt
 
+# rotated logs, straight off the pipe — gzip is detected by content, not by file name
+zcat access.log.*.gz | robotsmith advise --log - --host example.com
+
+# only an ERROR fails by default; --strict fails on warnings too
+robotsmith lint ./robots.txt --strict
+
 # or from a count you already have
 awk '{n=split($0,q,"\""); if(n>=5) print q[4]}' access.log | sort | uniq -c | sort -rn > ua.txt
 robotsmith advise --ua-counts ua.txt
 ```
 
-Exit codes: **0** everything as it should be · **1** something is not · **2** usage error ·
+### Flags
+
+<!-- flags:start -->
+| Command | Flag | What it does |
+|---|---|---|
+| `check` | `--origin <url>` | compares the public copy with the origin — the only reliable way to catch a stale CDN copy |
+| `check` | `--path <path>` | the path the expected cases are evaluated against (default `/`) |
+| `check` | `--quiet` | print the verdict only |
+| `lint` | `--strict` | make warnings fail too, for a file that must be correct under a first-match parser as well |
+| `advise` | `--log <file\|->` | access log (HAProxy or nginx); `-` reads stdin and gzipped input is decompressed transparently |
+| `advise` | `--ua-counts <file>` | a count already made: the output of `… \| sort \| uniq -c` |
+| `advise` | `--current <file\|url>` | the current `robots.txt`, whose rules are preserved verbatim |
+| `advise` | `--host <host>` | the site's host, used to validate the `Sitemap:` line |
+| `advise` | `--out <file>` | write the advised file there instead of stdout |
+| all three | `--json` | emit a machine-readable document on stdout (see below) |
+<!-- flags:end -->
+
+The flag table above is checked against the binary by a test: a flag that exists and is not
+documented — or documented and no longer exposed — fails the build.
+
+### Machine-readable output
+
+`--json` puts one document on stdout and nothing else there; the exit code is unchanged. Consumers
+pin the `schema` field, which is the only stable promise (the prose is free to be reworded):
+
+| Command | Schema | Carries |
+|---|---|---|
+| `check` | `robotsmith.check/1` | cases, failures, deindexing flag, problems, structural findings, cache headers |
+| `lint` | `robotsmith.lint/1` | findings with severity and line — what a CI annotation needs |
+| `advise` | `robotsmith.advise/1` | decisions (family, policy, share, reason), warnings **and** the advised file |
+
+```bash
+robotsmith lint ./robots.txt --json | jq -r '.findings[] | "::error line=\(.line)::\(.message)"'
+robotsmith advise --ua-counts ua.txt --json | jq -r '.decisions[] | select(.policy=="block") | .name'
+```
+
+A breaking change to a document bumps its schema number; it is never edited in place.
+
+### Exit codes
+
+**0** everything as it should be · **1** something is not · **2** usage error ·
 **4** file unreachable. Fit for a CI pipeline: a `robots.txt` that loses rules or stays stuck in a
-cache becomes a red build instead of a late discovery.
+cache becomes a red build instead of a late discovery. The four codes live in one place in the code
+and a test asserts every document repeats them.
 
 ## ⛔ What this tool does not do
 

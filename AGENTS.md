@@ -40,12 +40,20 @@ test found them, not a re-read.
 4. **Changing the exit codes** (`0/1/2/4`). They are a contract with the CI pipelines of whoever
    uses the tool.
 5. **Moving output between stdout and stderr.** The generated file goes to stdout, messages to
-   stderr: that is what makes `robotsmith advise ... > robots.txt` work.
+   stderr: that is what makes `robotsmith advise ... > robots.txt` work. With `--json`, stdout
+   carries the document and nothing else.
+6. **Editing a JSON document in place.** The `schema` strings in `internal/report` are pinned by
+   consumers: a removed field or a changed meaning bumps the version number (`…/1` → `…/2`). Adding
+   an optional field is fine.
+7. **Weakening the documentation gate** in `docs_test.go` to make it pass. It walks the real flag
+   sets and exit codes: if it is red, the docs are wrong, not the test.
 
 ## Boundaries
 
 - **Do not add dependencies.** Stdlib only. If a parser is needed, write it (there is one already).
 - **Do not touch `LICENSE`** or the documented exit codes.
+- **Do not tag and do not release.** A `v*` tag triggers a public release; only the maintainer
+  creates one.
 - **No network in tests**: use `httptest.NewServer`. No real domains, not even in runnable examples.
 - **Do not introduce a toolchain** for the site or the logo: `docs/` is hand-written HTML and SVG.
 - **Keep everything in English**: code, comments, messages and documentation.

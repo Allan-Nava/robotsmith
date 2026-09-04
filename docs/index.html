@@ -248,9 +248,45 @@ robotsmith lint ./robots.txt
 robotsmith advise --log access.log \
   --current https://example.com/robots.txt --host example.com --out robots.txt
 
+# rotated logs, straight off the pipe — gzip is detected by content, not by file name
+zcat access.log.*.gz | robotsmith advise --log - --host example.com
+
 # or from a count you already have
 awk '{n=split($0,q,"\""); if(n&gt;=5) print q[4]}' access.log | sort | uniq -c | sort -rn &gt; ua.txt
 robotsmith advise --ua-counts ua.txt</code></pre>
+
+<h3>Flags</h3>
+<table>
+  <thead><tr><th>Command</th><th>Flag</th><th>What it does</th></tr></thead>
+  <tbody>
+    <tr><td><code>check</code></td><td><code>--origin &lt;url&gt;</code></td><td>compares the public copy with the origin — the only reliable way to catch a stale CDN copy</td></tr>
+    <tr><td><code>check</code></td><td><code>--path &lt;path&gt;</code></td><td>the path the expected cases are evaluated against (default <code>/</code>)</td></tr>
+    <tr><td><code>check</code></td><td><code>--quiet</code></td><td>print the verdict only</td></tr>
+    <tr><td><code>lint</code></td><td><code>--strict</code></td><td>make warnings fail too, for a file that must be correct under a first-match parser as well</td></tr>
+    <tr><td><code>advise</code></td><td><code>--log &lt;file|-&gt;</code></td><td>access log (HAProxy or nginx); <code>-</code> reads stdin, gzipped input is decompressed transparently</td></tr>
+    <tr><td><code>advise</code></td><td><code>--ua-counts &lt;file&gt;</code></td><td>a count already made: the output of <code>… | sort | uniq -c</code></td></tr>
+    <tr><td><code>advise</code></td><td><code>--current &lt;file|url&gt;</code></td><td>the current <code>robots.txt</code>, whose rules are preserved verbatim</td></tr>
+    <tr><td><code>advise</code></td><td><code>--host &lt;host&gt;</code></td><td>the site's host, used to validate the <code>Sitemap:</code> line</td></tr>
+    <tr><td><code>advise</code></td><td><code>--out &lt;file&gt;</code></td><td>write the advised file there instead of stdout</td></tr>
+    <tr><td>all three</td><td><code>--json</code></td><td>emit a machine-readable document on stdout</td></tr>
+  </tbody>
+</table>
+
+<h3>Machine-readable output</h3>
+<p><code>--json</code> puts one document on stdout and nothing else there; the exit code is
+unchanged. Consumers pin the <code>schema</code> field, which is the only stable promise — the prose
+is free to be reworded, and a document is never edited in place: a breaking change bumps its
+number.</p>
+<table>
+  <thead><tr><th>Command</th><th>Schema</th><th>Carries</th></tr></thead>
+  <tbody>
+    <tr><td><code>check</code></td><td><code>robotsmith.check/1</code></td><td>cases, failures, deindexing flag, problems, structural findings, cache headers</td></tr>
+    <tr><td><code>lint</code></td><td><code>robotsmith.lint/1</code></td><td>findings with severity and line — what a CI annotation needs</td></tr>
+    <tr><td><code>advise</code></td><td><code>robotsmith.advise/1</code></td><td>decisions (family, policy, share, reason), warnings <b>and</b> the advised file</td></tr>
+  </tbody>
+</table>
+<pre><code>robotsmith lint ./robots.txt --json | jq -r '.findings[] | "::error line=\(.line)::\(.message)"'
+robotsmith advise --ua-counts ua.txt --json | jq -r '.decisions[] | select(.policy=="block") | .name'</code></pre>
 
 <h3>Exit codes</h3>
 <table>
@@ -286,6 +322,11 @@ behaviour change starts from a failing test, and every bug found gets a test bef
 suite runs with <code>-race</code> in CI along with <code>gofmt -l</code>, <code>go vet</code> and
 <code>go build</code>; no test touches the network (<code>httptest</code> only) or writes outside a
 temporary directory.</p>
+<p><b>The automation is part of the contract.</b> A tagged push cross-compiles four targets with
+the version stamped in from the tag, takes the release notes from the CHANGELOG (and refuses to
+publish if the section is missing), and ships checksums. CI cross-compiles those same targets on
+every pull request, and a test asserts that the flags and exit codes written on this page are the
+ones the binary really exposes — the documentation cannot drift without turning the build red.</p>
 <p style="margin-bottom:0">The parser is kept separate from the policy on purpose: matching
 correctness is verifiable against the RFC, policy is an opinion. <code>internal/matcher</code> knows
 nothing about "good crawlers"; <code>internal/advise</code> does no I/O.</p>

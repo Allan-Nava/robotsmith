@@ -16,9 +16,10 @@ Adapted from the `devops_hiway` conventions, cut down to what a single-binary re
 
 - **Every user-visible change gets a [CHANGELOG.md](CHANGELOG.md) entry** under `## [Unreleased]`
   (Keep a Changelog sections: Added / Changed / Fixed / Removed), **without being asked**. A
-  release then moves that block under `vX.Y.Z`, bumps the `version` constant in [main.go](main.go)
-  and tags `git tag -a vX.Y.Z`: **minor** for new behaviour or removals, **patch** for fixes.
-  `go install` consumers get exactly what the tag says, so the tag and the constant must agree.
+  release then moves that block under `vX.Y.Z` and tags `git tag -a vX.Y.Z`: **minor** for new
+  behaviour or removals, **patch** for fixes. The version is **not** a constant — it is stamped in
+  from the tag with `-ldflags -X main.version=`, so nothing has to be kept in sync by hand; the
+  release workflow refuses to publish a tag whose CHANGELOG section is missing.
 - **NEVER `git push`** and never tag a release on your own initiative — pushing is always the
   maintainer's call. No `Co-Authored-By` trailers.
 - **Document always, without asking.** A behaviour change touches [README.md](README.md) (usage) and
@@ -45,6 +46,7 @@ go test -cover ./...           # coverage per package
 gofmt -l .                     # must print NOTHING: CI fails if it prints anything
 go vet ./...
 go run . advise --ua-counts ua.txt --host example.com   # try it by hand
+zcat access.log.*.gz | go run . advise --log -          # rotated logs, off the pipe
 ```
 
 CI ([.github/workflows/ci.yml](.github/workflows/ci.yml)) runs exactly: `gofmt -l`, `go vet`,
@@ -85,6 +87,7 @@ Rules that hold for the tests in this repo:
 | [internal/lint](internal/lint/) | **structural** defects of the file | Does not judge which bots to block |
 | [internal/check](internal/check/) | fetch, comparison with the origin, expected cases | The case list is data, not logic |
 | [internal/advise](internal/advise/) | UA classification → policy → file | Does no I/O |
+| [internal/report](internal/report/) | the `--json` documents | Decides nothing; only renders |
 
 The parser is kept separate from the policy **on purpose**: matching correctness is verifiable
 against the RFC, policy is an opinion. Do not merge them into one function.
@@ -169,3 +172,17 @@ No change is finished without its documentation. Concretely:
 | this file / [AGENTS.md](AGENTS.md) | **How** work is done here (people / coding agents) |
 | [BACKLOG.md](BACKLOG.md) | **What is missing**, by milestone — the roadmap |
 | [CHANGELOG.md](CHANGELOG.md) | **What changed**, release by release |
+
+## Automation
+
+Nothing here needs a person to remember it:
+
+| Trigger | Workflow | What it does |
+|---|---|---|
+| push / PR | [ci.yml](.github/workflows/ci.yml) | `gofmt -l`, `go vet`, `go test -race`, `go build`, cross-compile of the four release targets, coverage summary |
+| push to `main` touching `docs/` | [pages.yml](.github/workflows/pages.yml) | publishes `docs/` to GitHub Pages (no Jekyll, no build step) |
+| tag `v*` | [release.yml](.github/workflows/release.yml) | runs the suite, cross-compiles linux/darwin × amd64/arm64 with the version from the tag, extracts the notes from `CHANGELOG.md` (**fails if the section is missing**), publishes binaries + `checksums.txt` |
+| monthly | [dependabot.yml](.github/dependabot.yml) | bumps the workflow actions (Go modules are not listed: zero dependencies is an invariant) |
+
+Cutting a release is therefore: write the CHANGELOG section, `git tag -a vX.Y.Z`, and let the
+maintainer push. An agent does neither the tag nor the push.

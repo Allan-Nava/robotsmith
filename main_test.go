@@ -72,7 +72,7 @@ func TestReadLogExtractsOnlyTheUserAgents(t *testing.T) {
 1.2.3.5 - - [01/Sep/2026:10:00:01 +0000] "GET /b HTTP/1.1" 200 12 "-" "Mozilla/5.0 (compatible; GPTBot/1.4)"
 1.2.3.6 - - [01/Sep/2026:10:00:02 +0000] "POST /c HTTP/1.1" 200 12 "-" "okhttp/5.4.0"
 `
-	obs, err := readLog(writeTemp(t, "access.log", log))
+	obs, err := readLog(writeTemp(t, "access.log", log), nil)
 	if err != nil {
 		t.Fatal(err)
 	}

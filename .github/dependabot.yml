@@ -1,0 +1,11 @@
+# Keeps the workflow actions current: a pinned action that goes stale is how a CI pipeline breaks
+# months later, on a day nobody is looking at it. Go modules are not listed on purpose — this repo
+# has no dependencies outside the stdlib, and that is an invariant, not an oversight.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    commit-message:
+      prefix: ci

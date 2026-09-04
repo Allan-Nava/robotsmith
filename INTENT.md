@@ -108,6 +108,40 @@ The first version was written in Italian (code, comments, output). It was made E
 Italian identifiers with English Go APIs — costs a translation step to every reader and every
 contributor. One language, all the way through: code, comments, CLI output, documentation.
 
+### `--json` is the contract, the prose is not
+Exit codes say *whether* something is wrong; a pipeline that wants to annotate a pull request, open
+a ticket or trend the numbers needs *what*. Parsing the human output was the only way to get that,
+and [CLAUDE.md](CLAUDE.md) explicitly reserves the right to reword it — so the first typo fix would
+have broken every consumer. Hence one document per command with a pinned `schema` field: a breaking
+change bumps its number (`robotsmith.lint/1` → `/2`) and never edits the shape in place. The advised
+file travels *inside* the advise document on purpose: making a consumer run the command twice to get
+both the reasoning and the result is how the two drift apart.
+
+### `lint` stays lenient by default, `--strict` is opt-in
+`Allow: /` before the prohibitions is legal, and with Google it changes nothing — failing the build
+on it by default would make the tool cry wolf, and a tool that cries wolf gets `|| true` appended to
+it. But a team that has decided the file must be correct under a first-match parser too had no way
+to enforce that decision. `--strict` is that decision, made explicitly by whoever runs it.
+
+### The version comes from the tag, not from the source
+A `version` constant means every development build claims to be the last release, and a bug report
+cannot be tied to code. It is now stamped in with `-ldflags -X` at release time, and a non-release
+build reports its commit plus a dirty marker. Consequence worth stating: the CHANGELOG section is
+the *only* thing that has to be written by hand before a tag, and the release workflow refuses to
+publish without it.
+
+### Gzip is detected by content, not by file name
+Rotated logs are called `access.log.3.gz`, `access.log-20260904`, or nothing at all when they arrive
+down a pipe. Trusting the extension means either failing on a compressed file with the wrong name or
+mangling a plain file with a `.gz` suffix — both observed in the wild. The magic bytes are the only
+thing that tells the truth.
+
+### The documentation is verified, not trusted
+The `31` vs `32` cases bug was a document stating a number the code no longer produced, with nothing
+to notice. A test now walks the real flag sets and the exit-code table and checks every document
+that repeats them. This is deliberately narrow: it covers the facts a machine can check (flags,
+codes, schema strings), not the prose — the prose is reviewed by people.
+
 ## Non-goals
 
 Stated, not forgotten:
@@ -130,6 +164,10 @@ Stated, not forgotten:
   reject. Documentation: `CLAUDE.md`, `AGENTS.md`, this file, the logo and the GitHub Pages site.
 - **2026-09-04** — whole repository translated to English (identifiers, comments, CLI output,
   documentation). Rationale above under *English everywhere*.
+- **2026-09-04** — milestone *v0.2.0 — Fit for a pipeline* implemented: `--json` with pinned
+  schemas, `lint --strict`, logs from stdin and gzip, CLI integration tests on the exit-code
+  contract, release automation with the version from the tag, and a gate that keeps the docs
+  honest. Each decision above; backlog in [BACKLOG.md](BACKLOG.md).
 
 When you make a decision someone might want to reverse, add it here with the date and the reason.
 One line is enough.

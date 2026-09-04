@@ -1,20 +1,23 @@
 // robotsmith — verifies and ADVISES a site's robots.txt, starting from its real traffic.
 //
-//	robotsmith check   example.com [--origin https://internal.origin/robots.txt]
-//	robotsmith lint    ./robots.txt          (or a URL)
-//	robotsmith advise  --log access.log --current https://example.com/robots.txt
+//	robotsmith check   example.com [--origin https://internal.origin/robots.txt] [--json]
+//	robotsmith lint    ./robots.txt [--strict] [--json]
+//	robotsmith advise  --log access.log --current https://example.com/robots.txt [--json]
 //
-// Exits 0 if everything is as it should be, 1 if something is not, 4 if the file is unreachable.
+// Exits 0 if everything is as it should be, 1 if something is not, 2 on a usage error, 4 if the
+// file is unreachable. Those four codes are a contract for the pipelines that call this binary.
 package main
 
 import (
 	"bufio"
+	"compress/gzip"
 	"flag"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
 	"regexp"
+	"runtime/debug"
 	"sort"
 	"strconv"
 	"strings"
@@ -23,9 +26,142 @@ import (
 	"github.com/Allan-Nava/robotsmith/internal/advise"
 	"github.com/Allan-Nava/robotsmith/internal/check"
 	"github.com/Allan-Nava/robotsmith/internal/lint"
+	"github.com/Allan-Nava/robotsmith/internal/report"
 )
 
-const version = "0.1.0"
+// exitCodes is the single source of truth for the contract other people's pipelines depend on.
+// The usage text is generated from it and a test asserts every document repeats it — that is the
+// drift the "31 cases" bug came from.
+var exitCodes = []struct {
+	code    int
+	meaning string
+}{
+	{0, "everything as it should be"},
+	{1, "something is not"},
+	{2, "usage error"},
+	{4, "file unreachable"},
+}
+
+func exitCodeLine() string {
+	parts := make([]string, 0, len(exitCodes))
+	for _, ec := range exitCodes {
+		parts = append(parts, fmt.Sprintf("%d %s", ec.code, ec.meaning))
+	}
+	return "Exit codes: " + strings.Join(parts, " · ")
+}
+
+// version is overwritten at release time with `-ldflags "-X main.version=<tag>"`. A constant would
+// make every development build claim to be a release, and a bug report impossible to tie to code.
+var version = "dev"
+
+func main() {
+	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
+}
+
+// run is the whole CLI: arguments in, exit code out, both streams injected. Keeping `main` down to
+// one line is what makes the exit-code contract testable.
+func run(args []string, out, errw io.Writer) int {
+	if len(args) == 0 {
+		fmt.Fprint(errw, usageText())
+		return 2
+	}
+	switch args[0] {
+	case "check":
+		return cmdCheck(args[1:], out, errw)
+	case "lint":
+		return cmdLint(args[1:], out, errw)
+	case "advise":
+		return cmdAdvise(args[1:], out, errw)
+	case "version", "--version", "-v":
+		fmt.Fprintln(out, "robotsmith", versionString(version, readBuildInfo()))
+		return 0
+	case "help", "--help", "-h":
+		fmt.Fprint(out, usageText())
+		return 0
+	default:
+		fmt.Fprint(errw, usageText())
+		return 2
+	}
+}
+
+// readBuildInfo is a variable so a test can pin what the build stamped in.
+var readBuildInfo = func() *debug.BuildInfo {
+	info, ok := debug.ReadBuildInfo()
+	if !ok {
+		return nil
+	}
+	return info
+}
+
+// versionString spells out which binary is running. A release carries its tag; anything else
+// carries the commit and whether the tree was dirty, which is what a bug report actually needs.
+func versionString(v string, info *debug.BuildInfo) string {
+	rev, dirty := "", false
+	if info != nil {
+		for _, s := range info.Settings {
+			switch s.Key {
+			case "vcs.revision":
+				rev = s.Value
+			case "vcs.modified":
+				dirty = s.Value == "true"
+			}
+		}
+		// `go install module@tag` stamps the tag in Main.Version and no vcs.* settings at all, so
+		// that is the only case where Main.Version is worth trusting. ⚠️ A plain `go build` inside
+		// the repo stamps a pseudo-version there instead (`v0.0.0-<date>-<hash>+dirty`), which would
+		// repeat the commit and dress a development build as something installable.
+		if v == "dev" && rev == "" && info.Main.Version != "" && info.Main.Version != "(devel)" {
+			v = info.Main.Version
+		}
+	}
+	if len(rev) > 12 {
+		rev = rev[:12]
+	}
+	switch {
+	case rev != "" && dirty:
+		return v + " (" + rev + ", dirty)"
+	case rev != "":
+		return v + " (" + rev + ")"
+	default:
+		return v
+	}
+}
+
+func usageText() string {
+	return `robotsmith ` + versionString(version, nil) + ` — verify and advise a robots.txt
+
+  robotsmith check  <domain|url> [--origin <url>] [--path /] [--quiet] [--json]
+      Verifies that the file is there, is FRESH and says the right thing (` +
+		strconv.Itoa(len(check.MustPass)+len(check.MustBeBlocked)) + ` cases).
+      --origin compares the public copy with the origin: it is the only reliable way
+      to find out whether a CDN is still serving an old version.
+
+  robotsmith lint   <file|url> [--strict] [--json]
+      Structural defects: empty file, orphan rules after a blank line,
+      "Allow: /" before the Disallow rules, Sitemap on another host, Disallow: / for everyone.
+      --strict makes warnings fail too, for a team that wants the file correct
+      under a first-match parser as well.
+
+  robotsmith advise --log <access.log|-> | --ua-counts <file> [--current <file|url>]
+                    [--host <host>] [--out <file>] [--json]
+      ADVISES the file starting from the observed traffic, and explains why.
+      --log accepts "-" for stdin and transparently reads gzipped logs.
+      --ua-counts accepts the output of "... | sort | uniq -c" (count + user-agent).
+
+  robotsmith version | help
+
+` + exitCodeLine() + `
+With --json the document goes to stdout and nothing else does; the verdict is unchanged.
+`
+}
+
+// newFlagSet builds a flag set that reports usage errors instead of killing the process: the
+// caller turns that into exit code 2, the documented "usage error".
+func newFlagSet(name string, errw io.Writer) *flag.FlagSet {
+	fs := flag.NewFlagSet(name, flag.ContinueOnError)
+	fs.SetOutput(errw)
+	return fs
+}
 
 // reorderArgs moves the operands (non-flags) to the end, so `check domain --quiet` behaves like
 // `check --quiet domain`. The stdlib `flag` package stops at the first operand, which for a CLI is
@@ -60,182 +196,222 @@ func takesValue(f string) bool {
 	return false
 }
 
-func main() {
-	if len(os.Args) < 2 {
-		usage()
-		os.Exit(2)
+// checkOpts, lintOpts and adviseOpts exist so flag registration lives in one place per command:
+// the documentation gate walks these flag sets, so a new flag is documented or CI goes red.
+type checkOpts struct {
+	origin, path  string
+	quiet, asJSON bool
+}
+
+func checkFlags(errw io.Writer) (*flag.FlagSet, *checkOpts) {
+	fs := newFlagSet("check", errw)
+	o := &checkOpts{}
+	fs.StringVar(&o.origin, "origin", "", "URL of the robots.txt on the origin")
+	fs.StringVar(&o.path, "path", "/", "path to test")
+	fs.BoolVar(&o.quiet, "quiet", false, "print the verdict only")
+	fs.BoolVar(&o.asJSON, "json", false, "emit a machine-readable document on stdout")
+	return fs, o
+}
+
+type lintOpts struct{ strict, asJSON bool }
+
+func lintFlags(errw io.Writer) (*flag.FlagSet, *lintOpts) {
+	fs := newFlagSet("lint", errw)
+	o := &lintOpts{}
+	fs.BoolVar(&o.strict, "strict", false, "make warnings fail too (exit 1)")
+	fs.BoolVar(&o.asJSON, "json", false, "emit a machine-readable document on stdout")
+	return fs, o
+}
+
+type adviseOpts struct {
+	logFile, uaCounts, current, host, outFile string
+	asJSON                                    bool
+}
+
+func adviseFlags(errw io.Writer) (*flag.FlagSet, *adviseOpts) {
+	fs := newFlagSet("advise", errw)
+	o := &adviseOpts{}
+	fs.StringVar(&o.logFile, "log", "", "access log (HAProxy or nginx), \"-\" for stdin, .gz supported")
+	fs.StringVar(&o.uaCounts, "ua-counts", "", "file with `count user-agent` per line (the output of uniq -c)")
+	fs.StringVar(&o.current, "current", "", "current robots.txt (file or URL): its rules are preserved")
+	fs.StringVar(&o.host, "host", "", "host of the site, to validate the Sitemap line")
+	fs.StringVar(&o.outFile, "out", "", "write the advised file here instead of on stdout")
+	fs.BoolVar(&o.asJSON, "json", false, "emit a machine-readable document on stdout")
+	return fs, o
+}
+
+func cmdCheck(args []string, out, errw io.Writer) int {
+	fs, opt := checkFlags(errw)
+	if err := fs.Parse(reorderArgs(args)); err != nil {
+		return 2
 	}
-	switch os.Args[1] {
-	case "check":
-		os.Exit(cmdCheck(os.Args[2:]))
-	case "lint":
-		os.Exit(cmdLint(os.Args[2:]))
-	case "advise":
-		os.Exit(cmdAdvise(os.Args[2:]))
-	case "version", "--version", "-v":
-		fmt.Println("robotsmith", version)
-	default:
-		usage()
-		os.Exit(2)
-	}
-}
-
-func usage() {
-	fmt.Fprint(os.Stderr, usageText())
-}
-
-// usageText is separate from usage() so a test can assert what it claims. The number of verified
-// cases comes from the tables in `check`: a literal here would silently lie the first time a
-// crawler is added.
-func usageText() string {
-	return `robotsmith ` + version + ` — verify and advise a robots.txt
-
-  robotsmith check  <domain|url> [--origin <url>] [--path /]
-      Verifies that the file is there, is FRESH and says the right thing (` +
-		strconv.Itoa(len(check.MustPass)+len(check.MustBeBlocked)) + ` cases).
-      --origin compares the public copy with the origin: it is the only reliable way
-      to find out whether a CDN is still serving an old version.
-
-  robotsmith lint   <file|url>
-      Structural defects: empty file, orphan rules after a blank line,
-      "Allow: /" before the Disallow rules, Sitemap on another host, Disallow: / for everyone.
-
-  robotsmith advise --log <access.log> | --ua-counts <file> [--current <file|url>] [--host <host>]
-      ADVISES the file starting from the observed traffic, and explains why.
-      --ua-counts accepts the output of "... | sort | uniq -c" (count + user-agent).
-`
-}
-
-func cmdCheck(args []string) int {
-	fs := flag.NewFlagSet("check", flag.ExitOnError)
-	origin := fs.String("origin", "", "URL of the robots.txt on the origin")
-	path := fs.String("path", "/", "path to test")
-	quiet := fs.Bool("quiet", false, "print the verdict only")
-	_ = fs.Parse(reorderArgs(args))
 	if fs.NArg() < 1 {
-		usage()
+		fmt.Fprint(errw, usageText())
 		return 2
 	}
 	u, host, err := check.RobotsURL(fs.Arg(0))
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "invalid URL:", err)
+		fmt.Fprintln(errw, "invalid URL:", err)
 		return 2
 	}
-	res, err := check.Run(u, *origin, *path)
+	res, err := check.Run(u, opt.origin, opt.path)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "[4]", err)
+		fmt.Fprintln(errw, "[4]", err)
 		return 4
 	}
-	if !*quiet {
-		fmt.Printf("%s — %d lines, %d groups\n", u, strings.Count(res.Body, "\n")+1,
+	findings := lint.Check(res.Body, host)
+
+	if opt.asJSON {
+		if err := report.Write(out, report.FromCheck(res, opt.path, findings)); err != nil {
+			fmt.Fprintln(errw, err)
+			return 1
+		}
+		return verdict(len(res.Problems) == 0)
+	}
+	if !opt.quiet {
+		fmt.Fprintf(out, "%s — %d lines, %d groups\n", u, strings.Count(res.Body, "\n")+1,
 			strings.Count(strings.ToLower(res.Body), "user-agent:"))
 		if v := res.Headers.Get("X-Cache"); v != "" {
-			fmt.Println("cache:", v, res.Headers.Get("Age"))
+			fmt.Fprintln(out, "cache:", v, res.Headers.Get("Age"))
 		}
-		for _, f := range lint.Check(res.Body, host) {
-			fmt.Printf("  %s %s\n", f.Sev, f.Msg)
+		for _, f := range findings {
+			fmt.Fprintf(out, "  %s %s\n", f.Sev, f.Msg)
 		}
 	}
 	if len(res.Problems) == 0 {
-		fmt.Printf("✅ OK — %d cases verified\n", res.Cases)
+		fmt.Fprintf(out, "✅ OK — %d cases verified\n", res.Cases)
 		return 0
 	}
-	fmt.Println("⛔ NOT as expected:")
+	fmt.Fprintln(out, "⛔ NOT as expected:")
 	for _, p := range res.Problems {
-		fmt.Println("   •", p)
+		fmt.Fprintln(out, "   •", p)
 	}
 	if res.Deindex {
-		fmt.Println("\n⛔ A search engine is blocked: fix this now.")
+		fmt.Fprintln(out, "\n⛔ A search engine is blocked: fix this now.")
 	}
 	return 1
 }
 
-func cmdLint(args []string) int {
-	if len(args) < 1 {
-		usage()
+func cmdLint(args []string, out, errw io.Writer) int {
+	fs, opt := lintFlags(errw)
+	if err := fs.Parse(reorderArgs(args)); err != nil {
 		return 2
 	}
-	body, host, err := read(args[0])
+	if fs.NArg() < 1 {
+		fmt.Fprint(errw, usageText())
+		return 2
+	}
+	src := fs.Arg(0)
+	body, host, err := read(src)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "[4]", err)
+		fmt.Fprintln(errw, "[4]", err)
 		return 4
 	}
-	f := lint.Check(body, host)
-	if len(f) == 0 {
-		fmt.Println("✅ no structural defect")
+	findings := lint.Check(body, host)
+
+	if opt.asJSON {
+		if err := report.Write(out, report.FromLint(src, findings)); err != nil {
+			fmt.Fprintln(errw, err)
+			return 1
+		}
+		return lintVerdict(findings, opt.strict)
+	}
+	if len(findings) == 0 {
+		fmt.Fprintln(out, "✅ no structural defect")
 		return 0
 	}
-	worst := 0
-	for _, x := range f {
+	for _, x := range findings {
 		pos := ""
 		if x.Line > 0 {
 			pos = fmt.Sprintf(" (line %d)", x.Line)
 		}
-		fmt.Printf("%s%s: %s\n", x.Sev, pos, x.Msg)
-		if x.Sev == lint.Error {
-			worst = 1
-		}
+		fmt.Fprintf(out, "%s%s: %s\n", x.Sev, pos, x.Msg)
 	}
-	return worst
+	return lintVerdict(findings, opt.strict)
 }
 
-func cmdAdvise(args []string) int {
-	fs := flag.NewFlagSet("advise", flag.ExitOnError)
-	logFile := fs.String("log", "", "access log (HAProxy or nginx): the user-agents are extracted from it")
-	uaCounts := fs.String("ua-counts", "", "file with `count user-agent` per line (the output of uniq -c)")
-	current := fs.String("current", "", "current robots.txt (file or URL): its rules are preserved")
-	host := fs.String("host", "", "host of the site, to validate the Sitemap line")
-	out := fs.String("out", "", "write the advised file here instead of on screen")
-	_ = fs.Parse(reorderArgs(args))
+// lintVerdict decides the exit code. By default only an ERROR fails: `Allow: /` in the wrong place
+// is legal and works with Google, so failing on it by default would cry wolf. `--strict` is for a
+// team that has decided the file must also be correct under a first-match parser.
+func lintVerdict(findings []lint.Finding, strict bool) int {
+	for _, f := range findings {
+		if f.Sev == lint.Error || strict {
+			return 1
+		}
+	}
+	return 0
+}
+
+func verdict(ok bool) int {
+	if ok {
+		return 0
+	}
+	return 1
+}
+
+func cmdAdvise(args []string, out, errw io.Writer) int {
+	fs, opt := adviseFlags(errw)
+	if err := fs.Parse(reorderArgs(args)); err != nil {
+		return 2
+	}
 
 	var obs []advise.Observation
 	var err error
 	switch {
-	case *uaCounts != "":
-		obs, err = readCounts(*uaCounts)
-	case *logFile != "":
-		obs, err = readLog(*logFile)
+	case opt.uaCounts != "":
+		obs, err = readCounts(opt.uaCounts)
+	case opt.logFile != "":
+		obs, err = readLog(opt.logFile, os.Stdin)
 	default:
-		fmt.Fprintln(os.Stderr, "either --log or --ua-counts is required")
+		fmt.Fprintln(errw, "either --log or --ua-counts is required")
 		return 2
 	}
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "[4]", err)
+		fmt.Fprintln(errw, "[4]", err)
 		return 4
 	}
 	var existing string
-	if *current != "" {
-		existing, _, err = read(*current)
+	if opt.current != "" {
+		existing, _, err = read(opt.current)
 		if err != nil {
-			fmt.Fprintln(os.Stderr, "warning: current robots.txt not readable:", err)
+			fmt.Fprintln(errw, "warning: current robots.txt not readable:", err)
 		}
 	}
 
 	a := advise.Analyze(obs)
-	fmt.Fprintf(os.Stderr, "Observed %d requests from %d distinct user-agents.\n", a.Total, len(obs))
-	fmt.Fprintln(os.Stderr, "\nWhat I advise, and why:")
+	text := advise.Render(a, existing, opt.host)
+
+	if opt.asJSON {
+		if err := report.Write(out, report.FromAdvise(a, text, len(obs))); err != nil {
+			fmt.Fprintln(errw, err)
+			return 1
+		}
+		return 0
+	}
+
+	fmt.Fprintf(errw, "Observed %d requests from %d distinct user-agents.\n", a.Total, len(obs))
+	fmt.Fprintln(errw, "\nWhat I advise, and why:")
 	for _, d := range a.Decisions {
 		label := map[advise.Policy]string{
 			advise.Allow: "ALLOW   ", advise.Block: "BLOCK   ", advise.Candidate: "REVIEW  ",
 		}[d.Policy]
-		fmt.Fprintf(os.Stderr, "  %s %-22s %6.2f%%  %s\n", label, d.Name, d.Share, d.Why)
+		fmt.Fprintf(errw, "  %s %-22s %6.2f%%  %s\n", label, d.Name, d.Share, d.Why)
 	}
 	if a.Saving > 0 {
-		fmt.Fprintf(os.Stderr, "\nThe advised blocks touch %.1f%% of the observed requests.\n", a.Saving)
+		fmt.Fprintf(errw, "\nThe advised blocks touch %.1f%% of the observed requests.\n", a.Saving)
 	}
 	for _, w := range a.Warnings {
-		fmt.Fprintln(os.Stderr, "\n⚠️ ", w)
+		fmt.Fprintln(errw, "\n⚠️ ", w)
 	}
-	text := advise.Render(a, existing, *host)
-	if *out != "" {
-		if err := os.WriteFile(*out, []byte(text), 0o644); err != nil {
-			fmt.Fprintln(os.Stderr, err)
+	if opt.outFile != "" {
+		if err := os.WriteFile(opt.outFile, []byte(text), 0o644); err != nil {
+			fmt.Fprintln(errw, err)
 			return 1
 		}
-		fmt.Fprintln(os.Stderr, "\nwritten:", *out)
+		fmt.Fprintln(errw, "\nwritten:", opt.outFile)
 		return 0
 	}
-	fmt.Print(text)
+	fmt.Fprint(out, text)
 	return 0
 }
 
@@ -274,8 +450,7 @@ func readCounts(path string) ([]advise.Observation, error) {
 	}
 	defer f.Close()
 	var obs []advise.Observation
-	sc := bufio.NewScanner(f)
-	sc.Buffer(make([]byte, 1<<20), 1<<20)
+	sc := scanner(f)
 	for sc.Scan() {
 		m := reCount.FindStringSubmatch(sc.Text())
 		if m == nil {
@@ -287,35 +462,31 @@ func readCounts(path string) ([]advise.Observation, error) {
 	return obs, sc.Err()
 }
 
-// readLog extracts the user-agents from an access log. The heuristic is deliberately simple: take
-// the quoted fields and drop the one starting with an HTTP method (the request line). It works with
-// both HAProxy and nginx's `combined` format, which put the UA in different positions.
-func readLog(path string) ([]advise.Observation, error) {
-	f, err := os.Open(path)
+// readLog extracts the user-agents from an access log. `path` may be "-" for stdin, and a gzipped
+// stream is decompressed transparently — rotated logs arrive gzipped and usually down a pipe, and
+// decompressing gigabytes to disk first just to count user-agents is not a real option.
+func readLog(path string, stdin io.Reader) ([]advise.Observation, error) {
+	var src io.Reader
+	if path == "-" {
+		src = stdin
+	} else {
+		f, err := os.Open(path)
+		if err != nil {
+			return nil, err
+		}
+		defer f.Close()
+		src = f
+	}
+	src, err := maybeGunzip(src)
 	if err != nil {
 		return nil, err
 	}
-	defer f.Close()
+
 	count := map[string]int64{}
-	sc := bufio.NewScanner(f)
-	sc.Buffer(make([]byte, 1<<20), 1<<20)
+	sc := scanner(src)
 	for sc.Scan() {
-		parts := strings.Split(sc.Text(), `"`)
-		for i := 1; i < len(parts); i += 2 {
-			c := strings.TrimSpace(parts[i])
-			if c == "" || c == "-" {
-				continue
-			}
-			if isRequestLine(c) {
-				continue
-			}
-			if !strings.Contains(c, "/") && !strings.Contains(c, " ") {
-				continue // a bare referer or a host: not a UA
-			}
-			if strings.HasPrefix(c, "http://") || strings.HasPrefix(c, "https://") {
-				continue // referer
-			}
-			count[c]++
+		for _, ua := range userAgentsIn(sc.Text()) {
+			count[ua]++
 		}
 	}
 	if err := sc.Err(); err != nil {
@@ -329,6 +500,50 @@ func readLog(path string) ([]advise.Observation, error) {
 	return obs, nil
 }
 
+// maybeGunzip sniffs the gzip magic bytes instead of trusting the file name: rotated logs are
+// called `access.log.3.gz`, `access.log-20260904`, or nothing in particular, and a pipe has no name
+// at all.
+func maybeGunzip(r io.Reader) (io.Reader, error) {
+	br := bufio.NewReaderSize(r, 1<<16)
+	magic, err := br.Peek(2)
+	if err != nil && err != io.EOF {
+		return nil, err
+	}
+	if len(magic) == 2 && magic[0] == 0x1f && magic[1] == 0x8b {
+		zr, err := gzip.NewReader(br)
+		if err != nil {
+			return nil, fmt.Errorf("gzip: %w", err)
+		}
+		return zr, nil
+	}
+	return br, nil
+}
+
+// userAgentsIn pulls the user-agent out of one log line. The heuristic is deliberately simple:
+// take the quoted fields and drop the request line and the referer. It works with both HAProxy and
+// nginx's `combined` format, which put the UA in different positions.
+func userAgentsIn(line string) []string {
+	var out []string
+	parts := strings.Split(line, `"`)
+	for i := 1; i < len(parts); i += 2 {
+		c := strings.TrimSpace(parts[i])
+		if c == "" || c == "-" {
+			continue
+		}
+		if isRequestLine(c) {
+			continue
+		}
+		if !strings.Contains(c, "/") && !strings.Contains(c, " ") {
+			continue // a bare referer or a host: not a UA
+		}
+		if strings.HasPrefix(c, "http://") || strings.HasPrefix(c, "https://") {
+			continue // referer
+		}
+		out = append(out, c)
+	}
+	return out
+}
+
 func isRequestLine(s string) bool {
 	for _, m := range []string{"GET ", "POST ", "PUT ", "DELETE ", "HEAD ", "OPTIONS ", "PATCH "} {
 		if strings.HasPrefix(s, m) {
@@ -336,4 +551,12 @@ func isRequestLine(s string) bool {
 		}
 	}
 	return false
+}
+
+// scanner reads long lines without choking: a user-agent string can be absurdly long, and the
+// default 64 KiB token limit would silently truncate the line it appears on.
+func scanner(r io.Reader) *bufio.Scanner {
+	sc := bufio.NewScanner(r)
+	sc.Buffer(make([]byte, 1<<20), 1<<20)
+	return sc
 }
