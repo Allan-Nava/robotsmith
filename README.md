@@ -22,9 +22,11 @@ bringing a single visit, and the question «what do I put in robots.txt?» had n
 The lists you find online are generic; a site's traffic is specific.
 
 ```
-robotsmith check   example.com [--origin https://internal.origin/robots.txt]
-robotsmith lint    ./robots.txt
-robotsmith advise  --log access.log --current https://example.com/robots.txt --host example.com
+robotsmith check    example.com [--origin https://internal.origin/robots.txt] [--sitemaps]
+robotsmith lint     ./robots.txt [--strict]
+robotsmith advise   --log access.log --current https://example.com/robots.txt --host example.com
+robotsmith advise   --log access.log --current ./robots.txt --diff     # what would change
+robotsmith crawlers                                                   # the opinion it applies
 ```
 
 📖 Full documentation: **https://allan-nava.github.io/robotsmith/** ·
@@ -32,9 +34,11 @@ robotsmith advise  --log access.log --current https://example.com/robots.txt --h
 🤖 Coding agents: [AGENTS.md](AGENTS.md) · 🗺️ Roadmap: [BACKLOG.md](BACKLOG.md) ·
 📓 Changes: [CHANGELOG.md](CHANGELOG.md)
 
-Current: **0.2.0** — *Fit for a pipeline* ([milestone closed](https://github.com/Allan-Nava/robotsmith/milestone/1)).
-Next: [v0.3.0 — Sharper advice](https://github.com/Allan-Nava/robotsmith/milestone/2) ·
-[v0.4.0 — Your policy, verified continuously](https://github.com/Allan-Nava/robotsmith/milestone/3).
+Released: **0.3.0** — *Sharper advice* · **0.2.0** — *Fit for a pipeline*
+(milestones [1](https://github.com/Allan-Nava/robotsmith/milestone/1) and
+[2](https://github.com/Allan-Nava/robotsmith/milestone/2), both closed).
+In progress: [v0.4.0 — Your policy, verified continuously](https://github.com/Allan-Nava/robotsmith/milestone/3)
+— overridable policy, a closed advise → deploy → verify loop, one-line CI, and a report you can send.
 
 ## Why writing four lines by hand is not enough
 
