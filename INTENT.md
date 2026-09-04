@@ -200,6 +200,21 @@ carries the paths and the timestamps, and the tool was throwing them away. It sh
 for the decisions a person has to take, and **only** from a real log — a `uniq -c` count cannot know
 them, and inventing them would be worse than omitting them.
 
+### Dogfooding, without shipping a decoration
+The plan was "publish a robots.txt for our own site". The site is a *project* page, and crawlers read
+robots.txt only from the host root — so a file at `…/robotsmith/robots.txt` would have been exactly
+the artifact this tool warns about: correct, present, and governing nothing. It ships anyway, for two
+reasons that survive the objection: it is what this project would publish if it owned an origin, and
+it is held to the tool's own standard by the tool's own tests on every run (clean lint, all 32
+expected cases) — plus it says in its own header that only the host-root copy is read. The
+`Sitemap:` line is the part with an actual effect: the host-root file lists only sitemaps that
+answer 200, which is why `docs/sitemap.xml` now exists.
+
+The scheduled job draws the same line. It fails on what this repo can fix and only *reports* the
+policy of the shared host root, which is the account owner's call. A check that goes red for
+something nobody here can act on does not create pressure to fix it — it trains people to ignore
+red, and then the next real failure is invisible too.
+
 ## Non-goals
 
 Stated, not forgotten:
@@ -226,6 +241,9 @@ Stated, not forgotten:
   schemas, `lint --strict`, logs from stdin and gzip, CLI integration tests on the exit-code
   contract, release automation with the version from the tag, and a gate that keeps the docs
   honest. Each decision above; backlog in [BACKLOG.md](BACKLOG.md).
+- **2026-09-04** — the tool is now run against its own published site weekly, and the file it
+  publishes is checked by its own tests. Reasoning above under *Dogfooding, without shipping a
+  decoration*.
 - **2026-09-04** — milestone *v0.3.0 — Sharper advice* implemented: `advise --diff`,
   `robotsmith crawlers`, `check --sitemaps`, evidence behind a REVIEW — and the fix for
   hand-written groups being dropped, which was the worst defect in the tool. Reasoning above.
