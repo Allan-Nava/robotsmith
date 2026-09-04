@@ -81,10 +81,18 @@ func main() {
 }
 
 func usage() {
-	fmt.Fprint(os.Stderr, `robotsmith `+version+` — verify and advise a robots.txt
+	fmt.Fprint(os.Stderr, usageText())
+}
+
+// usageText is separate from usage() so a test can assert what it claims. The number of verified
+// cases comes from the tables in `check`: a literal here would silently lie the first time a
+// crawler is added.
+func usageText() string {
+	return `robotsmith ` + version + ` — verify and advise a robots.txt
 
   robotsmith check  <domain|url> [--origin <url>] [--path /]
-      Verifies that the file is there, is FRESH and says the right thing (31 cases).
+      Verifies that the file is there, is FRESH and says the right thing (` +
+		strconv.Itoa(len(check.MustPass)+len(check.MustBeBlocked)) + ` cases).
       --origin compares the public copy with the origin: it is the only reliable way
       to find out whether a CDN is still serving an old version.
 
@@ -95,7 +103,7 @@ func usage() {
   robotsmith advise --log <access.log> | --ua-counts <file> [--current <file|url>] [--host <host>]
       ADVISES the file starting from the observed traffic, and explains why.
       --ua-counts accepts the output of "... | sort | uniq -c" (count + user-agent).
-`)
+`
 }
 
 func cmdCheck(args []string) int {

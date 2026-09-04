@@ -10,6 +10,31 @@ A Go CLI, zero external dependencies, that **verifies** a `robots.txt` and **adv
 it** starting from the site's real traffic. Three commands: `check` (the file as served), `lint`
 (structural defects), `advise` (the file derived from the logs).
 
+## Working rules (ALWAYS)
+
+Adapted from the `devops_hiway` conventions, cut down to what a single-binary repo actually needs.
+
+- **Every user-visible change gets a [CHANGELOG.md](CHANGELOG.md) entry** under `## [Unreleased]`
+  (Keep a Changelog sections: Added / Changed / Fixed / Removed), **without being asked**. A
+  release then moves that block under `vX.Y.Z`, bumps the `version` constant in [main.go](main.go)
+  and tags `git tag -a vX.Y.Z`: **minor** for new behaviour or removals, **patch** for fixes.
+  `go install` consumers get exactly what the tag says, so the tag and the constant must agree.
+- **NEVER `git push`** and never tag a release on your own initiative — pushing is always the
+  maintainer's call. No `Co-Authored-By` trailers.
+- **Document always, without asking.** A behaviour change touches [README.md](README.md) (usage) and
+  `docs/index.html` (the public page); a debatable decision gets a dated line in
+  [INTENT.md](INTENT.md); a threshold, exit code or output format change gets one in the
+  *Invariants* section below.
+- **Todos live only in [BACKLOG.md](BACKLOG.md)** — single source, stable kebab-case ids, grouped by
+  milestone (that file *is* the roadmap; its headings mirror the GitHub milestones character for
+  character). Do not scatter `TODO` comments in the code and do not open a second list.
+- **An item without a milestone is not "next".** The *Backlog (unscheduled)* section is explicitly
+  not a queue: pulling something out of it means moving it into a milestone first, deliberately.
+- **Keep everything aligned.** One factual change propagates to: code, tests, `README.md`,
+  `docs/index.html`, `CHANGELOG.md`, `BACKLOG.md`. A number stated in prose that the code no longer
+  produces is a bug — that is exactly how the "31 cases" defect survived (see
+  `check-case-count-from-data`).
+
 ## Commands
 
 ```bash
@@ -134,3 +159,13 @@ No change is finished without its documentation. Concretely:
   [docs/mark.svg](docs/mark.svg) is the square variant (favicon, avatar) and carries its own panel,
   so it flips background and ink together. Edit them by hand: do not introduce a toolchain to
   generate an image.
+
+## Pointers
+
+| File | Question it answers |
+|---|---|
+| [INTENT.md](INTENT.md) | **Why** the repo exists, what it deliberately does not do |
+| [README.md](README.md) | **What** it does (usage, commands, exit codes) |
+| this file / [AGENTS.md](AGENTS.md) | **How** work is done here (people / coding agents) |
+| [BACKLOG.md](BACKLOG.md) | **What is missing**, by milestone — the roadmap |
+| [CHANGELOG.md](CHANGELOG.md) | **What changed**, release by release |

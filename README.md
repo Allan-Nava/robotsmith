@@ -29,7 +29,8 @@ robotsmith advise  --log access.log --current https://example.com/robots.txt --h
 
 📖 Full documentation: **https://allan-nava.github.io/robotsmith/** ·
 🧭 Design rationale: [INTENT.md](INTENT.md) · 🛠️ Contributing: [CLAUDE.md](CLAUDE.md) ·
-🤖 Coding agents: [AGENTS.md](AGENTS.md)
+🤖 Coding agents: [AGENTS.md](AGENTS.md) · 🗺️ Roadmap: [BACKLOG.md](BACKLOG.md) ·
+📓 Changes: [CHANGELOG.md](CHANGELOG.md)
 
 ## Why writing four lines by hand is not enough
 
@@ -136,7 +137,7 @@ advises what to write has to model how real crawlers behave, so it implements th
 ```bash
 go install github.com/Allan-Nava/robotsmith@latest
 
-# verify: the file is there, it is fresh, it says the right thing (31 cases)
+# verify: the file is there, it is fresh, it says the right thing (32 cases)
 robotsmith check example.com --origin https://internal.origin/robots.txt
 
 # structural defects of a local or remote file

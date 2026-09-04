@@ -1,10 +1,14 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
+
+	"github.com/Allan-Nava/robotsmith/internal/check"
 )
 
 func writeTemp(t *testing.T, name, content string) string {
@@ -102,5 +106,14 @@ func TestReadLocalFile(t *testing.T) {
 	}
 	if host != "" {
 		t.Errorf("a local file has no host (the Sitemap cannot be validated), got %q", host)
+	}
+}
+
+func TestUsageStatesTheRealNumberOfCases(t *testing.T) {
+	// The number of verified cases must come from the data, not from a literal in the help text:
+	// a hardcoded count silently lies the first time a crawler is added to the tables.
+	want := fmt.Sprintf("%d cases", len(check.MustPass)+len(check.MustBeBlocked))
+	if !strings.Contains(usageText(), want) {
+		t.Errorf("the usage text must state %q, got:\n%s", want, usageText())
 	}
 }
