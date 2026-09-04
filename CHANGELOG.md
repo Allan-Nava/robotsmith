@@ -42,7 +42,8 @@ consumers get exactly what a tag says. Pushing is always the maintainer's call, 
   installs the cask on macOS and Linux after every release and every Monday, and asserts the
   installed version equals `releases/latest` — the one check that catches a tap left behind when
   the release's last step fails. It also re-checks the exit-code contract and that the quarantine
-  attribute was stripped.
+  attribute was stripped. Before the first tag it skips with a notice instead of failing: there is
+  no cask to install yet, and a weekly red nobody can act on is one everybody learns to ignore.
 
 _Next up: [v0.4.0 — Your policy, verified continuously](BACKLOG.md#v040--your-policy-verified-continuously)._
 

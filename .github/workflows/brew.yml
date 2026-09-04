@@ -49,7 +49,26 @@ jobs:
       # or fails. Users see the prompt, which is why the README documents `brew trust`.
       HOMEBREW_NO_REQUIRE_TAP_TRUST: '1'
     steps:
+      # ⚠️ Until the first tag there is no release and therefore no cask on the tap. Without this
+      # gate the Monday cron would go red every week for something nobody can fix except by cutting
+      # a release — and a red build nobody can act on is one everybody learns to ignore.
+      # Note what this does NOT excuse: once a release exists, a missing cask is a real failure and
+      # the install below is allowed to fail on it.
+      - name: Is there a release to install yet?
+        id: gate
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if gh release view --repo "$GITHUB_REPOSITORY" --json tagName -q .tagName >/dev/null 2>&1; then
+            echo "go=1" >> "$GITHUB_OUTPUT"
+          else
+            echo "go=0" >> "$GITHUB_OUTPUT"
+            echo "::notice::no release yet — nothing has been published to the tap, so there is nothing to install"
+          fi
+
       - name: Install from the tap
+        if: steps.gate.outputs.go == '1'
         run: brew install --cask Allan-Nava/tap/robotsmith
 
       # ⚠️ The check that actually matters. "It installed some X.Y.Z" only proves brew installed
@@ -57,6 +76,7 @@ jobs:
       # making goreleaser fail on its last step — the old version installs cleanly and this job goes
       # green while `brew install` hands users a release from months ago.
       - name: The tap serves the latest release
+        if: steps.gate.outputs.go == '1'
         env:
           GH_TOKEN: ${{ github.token }}
           WANT: ${{ inputs.version }}      # an explicit dispatch input wins
@@ -79,7 +99,7 @@ jobs:
       # ⚠️ Unsigned binary. If the postflight hook did not run, a CLI does not get the
       # "unidentified developer" dialog a GUI gets: it dies on SIGKILL with no output at all.
       - name: Gatekeeper quarantine attribute is stripped
-        if: runner.os == 'macOS'
+        if: steps.gate.outputs.go == '1' && runner.os == 'macOS'
         run: |
           set -euo pipefail
           bin="$(readlink -f "$(which robotsmith)")"
@@ -92,6 +112,7 @@ jobs:
       # The exit codes are a documented contract (CLAUDE.md, Invariants 7) and the reason anyone
       # puts this binary in a pipeline. A cask that installs but exits 0 on a defect is broken.
       - name: The installed binary honours the exit codes
+        if: steps.gate.outputs.go == '1'
         run: |
           set -euo pipefail
           printf 'User-agent: *\nDisallow: /admin/\n' > clean.txt
@@ -107,5 +128,5 @@ jobs:
             || { echo "::error::advise did not emit the GPTBot group"; exit 1; }
 
       - name: Uninstall
-        if: always()
+        if: always() && steps.gate.outputs.go == '1'
         run: brew uninstall --cask robotsmith || true

@@ -106,6 +106,7 @@ func TestHomebrewInstallIsVerifiedByAWorkflow(t *testing.T) {
 		"Allan-Nava/tap/robotsmith",
 		"HOMEBREW_NO_REQUIRE_TAP_TRUST", // ⚠️ Homebrew 6+ blocks a third-party tap interactively
 		"releases/latest",               // ⚠️ the assertion that catches a tap left behind
+		"no release yet",                // ⚠️ before the first tag there is no cask: skip, do not fail
 	} {
 		if !strings.Contains(w, want) {
 			t.Errorf("brew.yml is missing %q", want)
