@@ -203,13 +203,16 @@ Nothing here needs a person to remember it:
 | Trigger | Workflow | What it does |
 |---|---|---|
 | push / PR | [ci.yml](.github/workflows/ci.yml) | `gofmt -l`, `go vet`, `go test -race`, `go build`, cross-compile of the four release targets, coverage summary |
-| PR touching `Formula/` · every release | [brew.yml](.github/workflows/brew.yml) | taps the formula on macOS and runs `brew audit --strict --online`, `brew install --build-from-source`, `brew test`. Called by `release.yml` after the formula commit, so the freshly written `url`/`sha256` are the ones proven |
+| after every release · weekly | [brew.yml](.github/workflows/brew.yml) | `brew install --cask Allan-Nava/tap/robotsmith` on macOS **and** Linux, then asserts the installed version equals `releases/latest` — the only check that catches a tap left behind — plus the exit codes and the quarantine attribute |
 | push / PR touching the image | [docker.yml](.github/workflows/docker.yml) | builds the image on a PR, pushes it to GHCR on `main` (`edge`) and on a tag (`X.Y.Z`, `X.Y`, `latest`), multi-arch, then smoke-tests it |
 | PR / push touching `BACKLOG.md` | [backlog.yml](.github/workflows/backlog.yml) | **dry run** on a PR, applies on `main`: projects the backlog onto GitHub issues via [cmd/backlog-sync](cmd/backlog-sync/) |
 | push to `main` touching `docs/` | [pages.yml](.github/workflows/pages.yml) | publishes `docs/` to GitHub Pages (no Jekyll, no build step) |
-| tag `v*` | [release.yml](.github/workflows/release.yml) | runs the suite, cross-compiles linux/darwin × amd64/arm64 with the version from the tag, extracts the notes from `CHANGELOG.md` (**fails if the section is missing**), publishes binaries + `checksums.txt`, then rewrites `url`/`sha256` in [Formula/robotsmith.rb](Formula/robotsmith.rb), commits it, and calls `brew.yml` to install what it just wrote |
+| tag `v*` | [release.yml](.github/workflows/release.yml) | runs the suite, extracts the notes from `CHANGELOG.md` (**fails if the section is missing**), then goreleaser cross-compiles linux/darwin × amd64/arm64, publishes the archives + `checksums.txt`, and pushes `Casks/robotsmith.rb` to `Allan-Nava/homebrew-tap` |
 | monthly | [dependabot.yml](.github/dependabot.yml) | bumps the workflow actions (Go modules are not listed: zero dependencies is an invariant) |
 
 Cutting a release is therefore: write the CHANGELOG section, commit, `git tag -a vX.Y.Z` (the tag
-message is that section), and let the maintainer `git push --follow-tags`. The push is the release:
+message is that section), and let the maintainer `git push --follow-tags`. The cask is a side effect
+of the tag — ⚠️ it needs the `HOMEBREW_TAP_GITHUB_TOKEN` secret (a PAT that can write to
+`Allan-Nava/homebrew-tap`); without it goreleaser publishes the archives and then fails on its last
+step, and the tap quietly keeps serving the previous version. The push is the release:
 until it happens nothing is public and every step is revertible.

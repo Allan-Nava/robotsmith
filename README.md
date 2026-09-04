@@ -139,10 +139,9 @@ advises what to write has to model how real crawlers behave, so it implements th
 ## Usage
 
 ```bash
-# Homebrew (tapped straight from this repo — the formula is audited, installed and
-# tested on macOS by CI at every release, so a tap that fails is a red build, not your problem)
-brew tap Allan-Nava/robotsmith https://github.com/Allan-Nava/robotsmith
-brew install robotsmith
+# Homebrew — macOS and Linuxbrew. Homebrew 6+ asks to trust a third-party tap the first
+# time: brew trust --cask Allan-Nava/tap/robotsmith
+brew install --cask Allan-Nava/tap/robotsmith
 
 # Docker — scratch image, runs as nobody, ~7 MB
 docker run --rm ghcr.io/allan-nava/robotsmith check example.com

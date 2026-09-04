@@ -23,12 +23,26 @@ consumers get exactly what a tag says. Pushing is always the maintainer's call, 
   exists for.
 
 ### Changed
-- **`brew install` is now verified before a user runs it.**
-  [brew.yml](.github/workflows/brew.yml) taps the formula and runs `brew audit --strict --online`,
-  `brew install --build-from-source` and `brew test` on a macOS runner — on every PR touching
-  `Formula/`, and again from [release.yml](.github/workflows/release.yml) *after* the tag-time
-  rewrite of `url`/`sha256`, which is the pair that actually needs proving. The formula's `ldflags`
-  no longer repeat the `-s -w` that `std_go_args` already passes.
+- **Homebrew is now `brew install --cask Allan-Nava/tap/robotsmith`**, published automatically to
+  the shared tap at every tag instead of tapped from this repository. The self-tap formula built
+  from source and needed a Go toolchain on the user's machine; the cask ships the release binary
+  and installs on Linuxbrew too (its only artifact is `binary`, which Homebrew does not treat as
+  macOS-only). Release artifacts are now `tar.gz` archives rather than bare binaries, which is what
+  a cask can consume.
+
+  ⚠️ If you installed the old way, `brew untap Allan-Nava/robotsmith` first.
+
+### Removed
+- **`Formula/robotsmith.rb`.** The tap is the only Homebrew path now: a formula here would be a
+  second place for the version to go stale, and the tap already has the drift detection this repo
+  would otherwise have had to grow.
+
+### Added
+- **The install is verified, and staleness is caught.** [brew.yml](.github/workflows/brew.yml)
+  installs the cask on macOS and Linux after every release and every Monday, and asserts the
+  installed version equals `releases/latest` — the one check that catches a tap left behind when
+  the release's last step fails. It also re-checks the exit-code contract and that the quarantine
+  attribute was stripped.
 
 _Next up: [v0.4.0 — Your policy, verified continuously](BACKLOG.md#v040--your-policy-verified-continuously)._
 

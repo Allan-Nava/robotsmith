@@ -1,19 +1,21 @@
-# Installs the formula the way a user would, on a real macOS runner. The formula is rewritten by a
-# robot at tag time (release.yml) and installed by people days later — without this, the first
-# person to run `brew install robotsmith` is the one who finds out the tarball checksum is wrong.
+# Installs the cask the way a user would. goreleaser pushes Casks/robotsmith.rb to
+# Allan-Nava/homebrew-tap at the end of a release; nobody looks at it again until somebody types
+# `brew install`. Without this, that person is the one who finds out the tap is broken.
 name: brew
 
 on:
-  pull_request:
-    paths: ['Formula/**', '.github/workflows/brew.yml']
+  workflow_run:
+    workflows: [release]
+    types: [completed]
+  # Weekly, because a tap rots without anybody releasing: a deleted release asset or a checksum
+  # that no longer matches turns up here, not in an issue from a user.
+  schedule:
+    - cron: '0 6 * * 1'          # Mondays 06:00 UTC
   workflow_dispatch:
-  # release.yml calls this after committing the new url/sha256: that pair is the one worth proving,
-  # not the stale one that was in the tree when the tag was cut.
-  workflow_call:
     inputs:
-      ref:
-        description: 'Commit or branch to take the formula from'
-        type: string
+      version:
+        description: 'Version to expect, without the leading v (e.g. 0.4.0); empty = releases/latest'
+        required: false
         default: ''
 
 permissions:
@@ -21,50 +23,89 @@ permissions:
 
 jobs:
   install:
-    runs-on: macos-14          # arm64: what `brew install` actually runs for most people today
-    timeout-minutes: 30
+    # Only after a release that actually succeeded, and never for a prerelease: `skip_upload: auto`
+    # publishes no cask for a v*-rc.* tag, so the job would install the previous stable one and
+    # report success for a release it never saw — a green that verified nothing.
+    if: >-
+      ${{ github.event_name != 'workflow_run' ||
+          (github.event.workflow_run.conclusion == 'success' &&
+           !contains(github.event.workflow_run.head_branch, '-')) }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # The cask's only artifact is `binary`, which is NOT in Homebrew's MACOS_ONLY_ARTIFACTS —
+        # so the `on_linux` branch is real and Linuxbrew installs it. Both get exercised.
+        os: [macos-14, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    # A guard, not an optimisation: the install is a download and an untar. Anything near this
+    # means it is hanging on a prompt, and the run should say so instead of looking busy.
+    timeout-minutes: 20
     env:
-      HOMEBREW_NO_ANALYTICS: 1
-      HOMEBREW_NO_AUTO_UPDATE: 1
-      HOMEBREW_NO_ENV_HINTS: 1
-      HOMEBREW_NO_INSTALL_CLEANUP: 1
-      TAP: robotsmith-ci/local
+      HOMEBREW_NO_ANALYTICS: '1'
+      HOMEBREW_NO_AUTO_UPDATE: '1'
+      HOMEBREW_NO_ENV_HINTS: '1'
+      HOMEBREW_NO_INSTALL_CLEANUP: '1'
+      # ⚠️ Homebrew 6+ asks to "trust" a third-party tap interactively; headless, that gate hangs
+      # or fails. Users see the prompt, which is why the README documents `brew trust`.
+      HOMEBREW_NO_REQUIRE_TAP_TRUST: '1'
     steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ inputs.ref }}
+      - name: Install from the tap
+        run: brew install --cask Allan-Nava/tap/robotsmith
 
-      # ⚠️ `brew audit ./Formula/robotsmith.rb` is DISABLED in current Homebrew — it only takes a
-      # formula NAME. So the file has to live in a tap, and every command below names it
-      # tap-qualified: a bare `robotsmith` would let brew resolve some other formula from its API
-      # and the job would go green having installed nothing of ours.
-      - name: Put the formula in a throwaway tap
+      # ⚠️ The check that actually matters. "It installed some X.Y.Z" only proves brew installed
+      # *something*: if the cask is stale — the classic cause is an expired HOMEBREW_TAP_GITHUB_TOKEN
+      # making goreleaser fail on its last step — the old version installs cleanly and this job goes
+      # green while `brew install` hands users a release from months ago.
+      - name: The tap serves the latest release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          WANT: ${{ inputs.version }}      # an explicit dispatch input wins
         run: |
           set -euo pipefail
-          brew tap-new "$TAP" --no-git
-          cp Formula/robotsmith.rb "$(brew --repository "$TAP")/Formula/robotsmith.rb"
+          if [ -z "$WANT" ]; then
+            # No tag argument resolves /releases/latest, which excludes drafts and prereleases —
+            # exactly the release the cask is supposed to track.
+            WANT="$(gh release view --repo "$GITHUB_REPOSITORY" --json tagName -q .tagName)"
+            WANT="${WANT#v}"
+          fi
+          GOT="$(robotsmith version | awk '{print $2}')"
+          GOT="${GOT#v}"
+          echo "the tap serves $GOT, the latest release is $WANT"
+          if [ "$GOT" != "$WANT" ]; then
+            echo "::error::stale tap: installed $GOT but the latest release is $WANT — the cask was not pushed (check the HOMEBREW_TAP_GITHUB_TOKEN secret)"
+            exit 1
+          fi
 
-      # audit is the gate a `brew tap` applies: bad metadata, a missing licence, a `url` that does
-      # not resolve. `--online` is what catches the checksum the release just wrote.
-      - name: brew audit
-        run: brew audit --strict --online "$TAP/robotsmith"
-
-      # From source, on purpose: the formula ships no bottle, so this is byte for byte the path a
-      # user takes. `--verbose` keeps the Go build log in the run when it fails.
-      - name: brew install
-        run: brew install --build-from-source --verbose "$TAP/robotsmith"
-
-      # The formula's own `test do` block: it asserts `lint` exits 1 on a defect and that `advise`
-      # emits a group. Those exit codes are a documented contract (CLAUDE.md, Invariants 7).
-      - name: brew test
-        run: brew test "$TAP/robotsmith"
-
-      # A last look from outside brew: the binary on PATH must report a version, which is the whole
-      # job of `-X main.version=` in the formula. A bare `robotsmith` here is deliberate — this
-      # step checks what landed on PATH.
-      - name: The installed binary reports its version
+      # ⚠️ Unsigned binary. If the postflight hook did not run, a CLI does not get the
+      # "unidentified developer" dialog a GUI gets: it dies on SIGKILL with no output at all.
+      - name: Gatekeeper quarantine attribute is stripped
+        if: runner.os == 'macOS'
         run: |
           set -euo pipefail
-          robotsmith version
-          robotsmith version | grep -Eq 'v?[0-9]+\.[0-9]+\.[0-9]+' \
-            || { echo "::error::the installed binary reports no version — check the ldflags in the formula"; exit 1; }
+          bin="$(readlink -f "$(which robotsmith)")"
+          if xattr -l "$bin" 2>/dev/null | grep -qi com.apple.quarantine; then
+            echo "::error::$bin still carries com.apple.quarantine — the postflight hook failed"
+            exit 1
+          fi
+          echo "no quarantine attribute"
+
+      # The exit codes are a documented contract (CLAUDE.md, Invariants 7) and the reason anyone
+      # puts this binary in a pipeline. A cask that installs but exits 0 on a defect is broken.
+      - name: The installed binary honours the exit codes
+        run: |
+          set -euo pipefail
+          printf 'User-agent: *\nDisallow: /admin/\n' > clean.txt
+          robotsmith lint clean.txt
+
+          printf 'User-agent: *\n\nDisallow: /admin/\n' > orphan.txt
+          if robotsmith lint orphan.txt; then
+            echo "::error::lint exited 0 on a file with a blank line inside the group"; exit 1
+          fi
+
+          printf '500 Mozilla/5.0 (compatible; GPTBot/1.4)\n' > ua.txt
+          robotsmith advise --ua-counts ua.txt 2>/dev/null | grep -q "User-agent: GPTBot" \
+            || { echo "::error::advise did not emit the GPTBot group"; exit 1; }
+
+      - name: Uninstall
+        if: always()
+        run: brew uninstall --cask robotsmith || true

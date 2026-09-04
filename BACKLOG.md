@@ -186,14 +186,16 @@ so a broken Dockerfile costs a red check, not a failed release.
 - **priority**: low
 - **labels**: packaging, ci
 - **milestone**: v0.2.0 — Fit for a pipeline
-- **ref**: [Formula/robotsmith.rb](Formula/robotsmith.rb), [.github/workflows/brew.yml](.github/workflows/brew.yml)
+- **ref**: [.goreleaser.yaml](.goreleaser.yaml), [.github/workflows/brew.yml](.github/workflows/brew.yml)
 
-Tapped straight from this repository, so there is no second repo to keep alive. The formula's
-`url` and `sha256` are rewritten by the release workflow at tag time — a formula updated by hand
-goes stale after the first release nobody remembers to edit. Its `test do` block checks both ends of
-the contract (a clean file lints clean, a defect exits 1) at install time. Since 2026-09-04 the whole
-tap-and-install path is exercised on a macOS runner — on a PR touching the formula, and again from the
-release after the robot rewrites the checksum, which is the version a user would be the first to break.
+`brew install --cask Allan-Nava/tap/robotsmith`, published to the shared tap by goreleaser at every
+tag. It started as a formula tapped from this repository — no second repo to keep alive — and moved
+on 2026-09-04, once that argument stopped holding: the tap was already alive, carried four other
+CLIs, and had the one thing this repo lacked, a job that notices a cask left behind. Nothing writes
+the cask by hand and the checksums come from the real assets. The install is exercised on macOS
+**and** Linux after every release and every Monday, and the version installed is compared with
+`releases/latest` — asserting merely "some X.Y.Z" would go green on a tap serving a release from
+months ago, which is the only way this actually breaks.
 
 ### `check-case-count-from-data` — the case count comes from the tables
 

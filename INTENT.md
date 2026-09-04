@@ -158,10 +158,14 @@ that does not lint, because a typo in a milestone title would silently create a 
 ### Packaging: brew and a scratch image
 The most likely place this tool runs is somebody's CI, where a Go toolchain is an unwanted
 dependency — hence a container image, and hence `scratch` plus the static binary and the CA bundle:
-no shell, no package manager, `nobody` as the user. The Homebrew formula is tapped from this
-repository instead of a second `homebrew-tap` repo, because a second repo is a second thing to keep
-alive; its checksum is rewritten by the release workflow, because a formula updated by hand goes
-stale after the first release nobody remembers to edit.
+no shell, no package manager, `nobody` as the user. Homebrew goes through
+`Allan-Nava/homebrew-tap`, as a cask carrying the release binary: the argument for self-tapping was
+that a second repo is a second thing to keep alive, and that stopped being true once the tap was
+already alive — five casks, its own CI, and a job that compares every cask against upstream's
+latest release every six hours. A formula here would now be the *second* place a version can be
+wrong, and the one without a watchdog. Nothing writes a cask by hand; the checksums come from the
+real release assets, because a formula updated by hand goes stale after the first release nobody
+remembers to edit.
 
 ### A diff, because the review is where the decision happens
 `advise` was printing a whole new file next to the old one and leaving the reader to compare them.
@@ -255,6 +259,12 @@ Stated, not forgotten:
   the gap between those two moments is where a broken `brew install` lives, and nothing was closing
   it. The check runs *after* the release commit, on `main`, because the tag's tree still carries
   the previous checksum.
+- **2026-09-04** — Homebrew moves to `Allan-Nava/homebrew-tap` as a cask, **reversing** the
+  self-tap decision recorded above the same day. The reason it was taken (a second repo is a second
+  thing to keep alive) no longer holds: that repo exists, carries four other CLIs, and already
+  detects a tap left behind — which this repo did not. The cost is one CI tool, goreleaser, adopted
+  because the tap's rule is "no formula, only casks, and nobody writes one by hand" and its
+  `brew style` buckets key off goreleaser's own marker.
 
 When you make a decision someone might want to reverse, add it here with the date and the reason.
 One line is enough.
