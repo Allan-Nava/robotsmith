@@ -46,7 +46,12 @@ test found them, not a re-read.
    consumers: a removed field or a changed meaning bumps the version number (`…/1` → `…/2`). Adding
    an optional field is fine.
 7. **Weakening the documentation gate** in `docs_test.go` to make it pass. It walks the real flag
-   sets and exit codes: if it is red, the docs are wrong, not the test.
+   sets, exit codes, workflows, schemas and install methods: if it is red, the docs are wrong, not
+   the test. Adding a flag or a workflow means updating `README.md` / `CLAUDE.md` in the *same*
+   commit.
+8. **Making a CI job fail on something this repo cannot fix.** A red build nobody here can act on
+   trains people to ignore red, and then the next real failure is invisible too. Report it instead
+   (see `dogfood.yml`).
 
 ## Boundaries
 

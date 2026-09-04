@@ -45,6 +45,11 @@ consumers get exactly what a tag says. Pushing is always the maintainer's call, 
   attribute was stripped. Before the first tag it skips with a notice instead of failing: there is
   no cask to install yet, and a weekly red nobody can act on is one everybody learns to ignore.
 
+- **The "document everything" rule is now a gate.** A test walks `.github/workflows/` and fails when
+  a workflow has no row in CLAUDE.md's *Automation* table — `dogfood.yml` had none, which is exactly
+  how automation ends up running unexplained. It joins the gates already covering flags, exit codes,
+  JSON schemas, the Go version and the install methods.
+
 _Next up: [v0.4.0 — Your policy, verified continuously](BACKLOG.md#v040--your-policy-verified-continuously)._
 
 ## [0.3.0] — 2026-09-04

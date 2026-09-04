@@ -96,3 +96,29 @@ func TestJSONSchemasAreDocumented(t *testing.T) {
 		}
 	}
 }
+
+func TestEveryWorkflowIsDocumented(t *testing.T) {
+	// ⚠️ Automation nobody documented is automation nobody knows runs — and when it fails, nobody
+	// knows what it was for. This is the gate for the rule "document everything": adding a workflow
+	// without a row in CLAUDE.md's Automation table fails the build, which is more reliable than
+	// remembering. (dogfood.yml and brew.yml were both added without one.)
+	entries, err := os.ReadDir(".github/workflows")
+	if err != nil {
+		t.Fatal(err)
+	}
+	claude := readDoc(t, "CLAUDE.md")
+	var seen int
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".yml") {
+			continue
+		}
+		seen++
+		if !strings.Contains(claude, e.Name()) {
+			t.Errorf("CLAUDE.md does not mention %s: every workflow needs a row in the Automation "+
+				"table saying what triggers it and what it does", e.Name())
+		}
+	}
+	if seen < 5 {
+		t.Errorf("expected the workflows to be there, found %d", seen)
+	}
+}

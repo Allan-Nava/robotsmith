@@ -161,6 +161,12 @@ No change is finished without its documentation. Concretely:
 - [docs/](docs/) is published to GitHub Pages by the
   [pages.yml](.github/workflows/pages.yml) workflow on every push to `main`. It is static HTML with
   no Jekyll (`.nojekyll`): it opens locally by double-clicking, no build step.
+- The site ships **its own** [docs/robots.txt](docs/robots.txt) and [docs/sitemap.xml](docs/sitemap.xml),
+  and [dogfood_test.go](dogfood_test.go) holds that file to this tool's own standard offline (clean
+  lint, all 32 expected cases). ⚠️ This is a *project* page: crawlers read robots.txt only from the
+  **host root**, so the published copy governs nothing and says so in its own header — the
+  `Sitemap:` line is the part with an effect, because the host-root file lists only sitemaps that
+  answer 200. Do not "tidy away" that header.
 - The logo ships as two deterministic files — [docs/logo.svg](docs/logo.svg) (dark ink, for light
   backgrounds) and [docs/logo-dark.svg](docs/logo-dark.svg) (cream ink) — picked by a `<picture>`
   element in the README and in the page. Do **not** put a `prefers-color-scheme` query back inside
@@ -207,8 +213,15 @@ Nothing here needs a person to remember it:
 | push / PR touching the image | [docker.yml](.github/workflows/docker.yml) | builds the image on a PR, pushes it to GHCR on `main` (`edge`) and on a tag (`X.Y.Z`, `X.Y`, `latest`), multi-arch, then smoke-tests it |
 | PR / push touching `BACKLOG.md` | [backlog.yml](.github/workflows/backlog.yml) | **dry run** on a PR, applies on `main`: projects the backlog onto GitHub issues via [cmd/backlog-sync](cmd/backlog-sync/) |
 | push to `main` touching `docs/` | [pages.yml](.github/workflows/pages.yml) | publishes `docs/` to GitHub Pages (no Jekyll, no build step) |
+| weekly · push touching the published files | [dogfood.yml](.github/workflows/dogfood.yml) | runs robotsmith against its own site: `lint --strict` on [docs/robots.txt](docs/robots.txt), our `sitemap.xml` must answer 200, and the live host-root file must be structurally sound |
 | tag `v*` | [release.yml](.github/workflows/release.yml) | runs the suite, extracts the notes from `CHANGELOG.md` (**fails if the section is missing**), then goreleaser cross-compiles linux/darwin × amd64/arm64, publishes the archives + `checksums.txt`, and pushes `Casks/robotsmith.rb` to `Allan-Nava/homebrew-tap` |
 | monthly | [dependabot.yml](.github/dependabot.yml) | bumps the workflow actions (Go modules are not listed: zero dependencies is an invariant) |
+
+⚠️ **A job may only fail on what this repo can fix.** `dogfood.yml` lints the shared host-root
+`robots.txt` (a structural defect there hurts every site on that host, and whoever owns that repo can
+act on it) but only **reports** its policy, which is the account owner's call — checking it strictly
+would be red forever, and a red build nobody here can act on teaches people to ignore red. Apply the
+same test to any check added later.
 
 Cutting a release is therefore: write the CHANGELOG section, commit, `git tag -a vX.Y.Z` (the tag
 message is that section), and let the maintainer `git push --follow-tags`. The cask is a side effect
