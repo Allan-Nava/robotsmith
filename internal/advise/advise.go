@@ -20,6 +20,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"time"
 )
 
 // Family is the classification of a user-agent.
@@ -113,6 +114,36 @@ var rules = []rule{
 	{regexp.MustCompile(`mozilla`), Browser, ""},
 }
 
+// RuleInfo is one classification rule, in the shape `robotsmith crawlers` prints it. Exposing the
+// table is what lets a person decide whether to trust the advice before running it on their logs —
+// and what lets a test prove no rule has been shadowed by an earlier pattern.
+type RuleInfo struct {
+	Pattern string
+	Family  Family
+	Token   string
+	Policy  Policy
+	Why     string
+}
+
+// Rules returns the table in evaluation order: the first pattern that matches wins, so the order
+// is part of the answer, not a detail.
+func Rules() []RuleInfo {
+	out := make([]RuleInfo, 0, len(rules))
+	for _, r := range rules {
+		pol, why := policyFor(r.fam, MinCandidateShare)
+		if r.fam == Unknown {
+			// ⚠️ The catch-all has no single policy: below the threshold it is ignored, above it a
+			// person decides. Printing "ignore" would be a lie and "block" would be worse.
+			pol = Candidate
+			why = fmt.Sprintf("unrecognised: reviewed when it is worth %.1f%% or more of the requests, "+
+				"ignored below that (a wrong block is invisible)", MinCandidateShare)
+		}
+		out = append(out, RuleInfo{Pattern: r.re.String(), Family: r.fam, Token: r.name,
+			Policy: pol, Why: why})
+	}
+	return out
+}
+
 // Classify assigns a family and, where needed, the token to write in the file.
 func Classify(ua string) (Family, string) {
 	l := strings.ToLower(ua)
@@ -158,6 +189,60 @@ var generic = map[string]bool{
 type Observation struct {
 	UA       string
 	Requests int64
+	// Evidence is what the raw log said beyond the count. It is nil for a `uniq -c` input, which
+	// cannot know paths or times — and claiming otherwise would be an invention.
+	Evidence *Evidence
+}
+
+// Evidence is the shape of the traffic behind one user-agent: which paths, over how long. For an
+// unknown crawler this is the difference between "0.4% and flat for a year" and "0.4% and
+// tripling", which is the whole decision.
+type Evidence struct {
+	TopPaths    []PathCount
+	First, Last time.Time
+}
+
+// PathCount is one path and how often it was asked for.
+type PathCount struct {
+	Path     string
+	Requests int64
+}
+
+// merge folds another observation's evidence in, so two UA strings mapping to the same token do not
+// lose half their traffic.
+func (e *Evidence) merge(o *Evidence) {
+	if o == nil {
+		return
+	}
+	agg := map[string]int64{}
+	for _, p := range append(append([]PathCount{}, e.TopPaths...), o.TopPaths...) {
+		agg[p.Path] += p.Requests
+	}
+	e.TopPaths = TopPaths(agg, 5)
+	if e.First.IsZero() || (!o.First.IsZero() && o.First.Before(e.First)) {
+		e.First = o.First
+	}
+	if o.Last.After(e.Last) {
+		e.Last = o.Last
+	}
+}
+
+// TopPaths turns a path histogram into the few lines worth printing, heaviest first.
+func TopPaths(counts map[string]int64, n int) []PathCount {
+	out := make([]PathCount, 0, len(counts))
+	for p, c := range counts {
+		out = append(out, PathCount{Path: p, Requests: c})
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Requests != out[j].Requests {
+			return out[i].Requests > out[j].Requests
+		}
+		return out[i].Path < out[j].Path // stable output: a report has to be diffable
+	})
+	if len(out) > n {
+		out = out[:n]
+	}
+	return out
 }
 
 // Decision is the recommendation for a single crawler.
@@ -169,6 +254,9 @@ type Decision struct {
 	Requests int64
 	Share    float64 // share of the observed total, as a percentage
 	Why      string
+	// Evidence is present only when the input was a real log. The CLI shows it for the decisions a
+	// person has to take (REVIEW), where the shape of the traffic is the argument.
+	Evidence *Evidence
 }
 
 // Advice is the full result of the algorithm.
@@ -215,9 +303,15 @@ func Analyze(obs []Observation) *Advice {
 		key := strings.ToLower(name)
 		if d, ok := agg[key]; ok {
 			d.Requests += o.Requests
+			if d.Evidence == nil {
+				d.Evidence = o.Evidence
+			} else {
+				d.Evidence.merge(o.Evidence)
+			}
 			continue
 		}
-		agg[key] = &Decision{Name: name, UA: o.UA, Family: fam, Policy: pol, Requests: o.Requests, Why: why}
+		agg[key] = &Decision{Name: name, UA: o.UA, Family: fam, Policy: pol, Requests: o.Requests,
+			Why: why, Evidence: o.Evidence}
 	}
 	for _, d := range agg {
 		d.Share = float64(d.Requests) / float64(a.Total) * 100

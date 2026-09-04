@@ -140,3 +140,56 @@ func TestGeneratedFileHasNoDefectsTheLinterWouldFlag(t *testing.T) {
 		}
 	}
 }
+
+// sampleFor derives a user-agent that must match `pattern`, so the test does not need a second
+// hand-maintained list of examples (which would drift from the table it is meant to check).
+// ⚠️ An anchored branch (`^node$`) means the whole UA is that literal: wrapping it in a Mozilla
+// comment would make a correct rule look shadowed.
+func sampleFor(pattern string) string {
+	first := strings.Split(pattern, "|")[0]
+	if strings.HasPrefix(first, "^") && strings.HasSuffix(first, "$") {
+		return strings.Trim(first, "^$")
+	}
+	first = strings.NewReplacer("^", "", "$", "", "-?", "-").Replace(first)
+	return "Mozilla/5.0 (compatible; " + first + "/1.0)"
+}
+
+func TestRulesExposesTheWholeTableAndNothingIsShadowed(t *testing.T) {
+	// ⚠️ The whole table is order-dependent: a pattern added above a more specific one silently
+	// swallows it, and the swallowed rule becomes dead code nobody notices. Every rule must still
+	// be reachable through Classify.
+	rules := Rules()
+	if len(rules) < 40 {
+		t.Fatalf("expected the full table, got %d rules", len(rules))
+	}
+	for _, r := range rules {
+		ua := sampleFor(r.Pattern)
+		fam, token := Classify(ua)
+		if fam != r.Family {
+			t.Errorf("%q (from %q) classifies as %v, but its own rule says %v: an earlier pattern is "+
+				"shadowing it", ua, r.Pattern, fam, r.Family)
+		}
+		if token != r.Token {
+			t.Errorf("%q: token = %q, its rule says %q", ua, token, r.Token)
+		}
+		if r.Policy == Block && r.Why == "" {
+			t.Errorf("rule %q blocks with no reason given", r.Pattern)
+		}
+	}
+}
+
+func TestRulesSaysWhatHappensToAnUnknownCrawler(t *testing.T) {
+	// The unknown catch-all has no single policy: it depends on volume. Saying "ignore" would be a
+	// lie and saying "block" would be worse.
+	for _, r := range Rules() {
+		if r.Family != Unknown {
+			continue
+		}
+		if !strings.Contains(r.Why, "%") {
+			t.Errorf("the unknown rule must explain the volume threshold, got %q", r.Why)
+		}
+		if r.Policy != Candidate {
+			t.Errorf("the unknown rule's policy = %v, expected Candidate (a person decides)", r.Policy)
+		}
+	}
+}

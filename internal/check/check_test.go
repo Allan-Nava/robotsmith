@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 )
 
@@ -155,5 +156,85 @@ func TestRunOnUnreachableFileIsAnError(t *testing.T) {
 	// A 404 is not "no rules": it is a missing file, and it must be told apart (exit 4).
 	if _, err := Run(serve(t, "not found", 404), "", "/"); err == nil {
 		t.Error("a 404 must return an error, not an empty result")
+	}
+}
+
+func TestSitemapsAreOnlyFetchedWhenAsked(t *testing.T) {
+	// ⚠️ A verification tool must not make network calls nobody asked for: the sitemap of a large
+	// site is a big file, and fetching it silently turns a lint into traffic.
+	var hits int32
+	sm := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&hits, 1)
+		w.Header().Set("Content-Type", "application/xml")
+		_, _ = w.Write([]byte(`<urlset></urlset>`))
+	}))
+	t.Cleanup(sm.Close)
+	body := "User-agent: *\nDisallow:\nSitemap: " + sm.URL + "/sitemap.xml\n"
+
+	res, err := Run(serve(t, body, 200), "", "/")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n := atomic.LoadInt32(&hits); n != 0 {
+		t.Errorf("the sitemap was fetched %d times without being asked", n)
+	}
+	if len(res.Sitemaps) != 0 {
+		t.Errorf("no sitemap report expected by default, got %+v", res.Sitemaps)
+	}
+
+	res, err = RunWith(Options{URL: serve(t, body, 200), Path: "/", Sitemaps: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n := atomic.LoadInt32(&hits); n != 1 {
+		t.Fatalf("expected exactly one fetch, got %d", n)
+	}
+	if len(res.Sitemaps) != 1 {
+		t.Fatalf("expected one sitemap report, got %+v", res.Sitemaps)
+	}
+	got := res.Sitemaps[0]
+	if got.Status != 200 || got.ContentType != "application/xml" || got.Bytes == 0 {
+		t.Errorf("sitemap report = %+v", got)
+	}
+	if got.Problem != "" {
+		t.Errorf("a healthy sitemap has no problem, got %q", got.Problem)
+	}
+}
+
+func TestASitemapThatDoesNotAnswerIsAProblem(t *testing.T) {
+	// The common failure after a migration: the file is right, the sitemap 404s, and nobody knows
+	// until Search Console complains weeks later.
+	gone := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.NotFound(w, r)
+	}))
+	t.Cleanup(gone.Close)
+	body := "User-agent: *\nDisallow:\nSitemap: " + gone.URL + "/sitemap.xml\n"
+
+	res, err := RunWith(Options{URL: serve(t, body, 200), Path: "/", Sitemaps: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Sitemaps) != 1 || res.Sitemaps[0].Status != 404 {
+		t.Fatalf("sitemaps = %+v", res.Sitemaps)
+	}
+	if res.Sitemaps[0].Problem == "" {
+		t.Error("a 404 sitemap must be reported as a problem")
+	}
+	if !strings.Contains(strings.Join(res.Problems, " "), "sitemap") {
+		t.Errorf("it must reach the verdict, not just the detail: %v", res.Problems)
+	}
+	if res.Deindex {
+		t.Error("an unreachable sitemap does not deindex: that flag is for a blocked search engine")
+	}
+}
+
+func TestRunIsStillTheOneArgumentForm(t *testing.T) {
+	// Run stays: it is the call every existing caller makes, and Options is the way to ask for more.
+	res, err := Run(serve(t, healthy, 200), "", "/")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Problems) != 0 {
+		t.Errorf("problems = %v", res.Problems)
 	}
 }

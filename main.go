@@ -72,6 +72,8 @@ func run(args []string, out, errw io.Writer) int {
 		return cmdLint(args[1:], out, errw)
 	case "advise":
 		return cmdAdvise(args[1:], out, errw)
+	case "crawlers":
+		return cmdCrawlers(args[1:], out, errw)
 	case "version", "--version", "-v":
 		fmt.Fprintln(out, "robotsmith", versionString(version, readBuildInfo()))
 		return 0
@@ -130,11 +132,13 @@ func versionString(v string, info *debug.BuildInfo) string {
 func usageText() string {
 	return `robotsmith ` + versionString(version, nil) + ` — verify and advise a robots.txt
 
-  robotsmith check  <domain|url> [--origin <url>] [--path /] [--quiet] [--json]
+  robotsmith check  <domain|url> [--origin <url>] [--path /] [--sitemaps] [--quiet] [--json]
       Verifies that the file is there, is FRESH and says the right thing (` +
 		strconv.Itoa(len(check.MustPass)+len(check.MustBeBlocked)) + ` cases).
       --origin compares the public copy with the origin: it is the only reliable way
       to find out whether a CDN is still serving an old version.
+      --sitemaps also asks every Sitemap: URL whether it answers (off by default:
+      a verification must not make network calls nobody asked for).
 
   robotsmith lint   <file|url> [--strict] [--json]
       Structural defects: empty file, orphan rules after a blank line,
@@ -143,10 +147,18 @@ func usageText() string {
       under a first-match parser as well.
 
   robotsmith advise --log <access.log|-> | --ua-counts <file> [--current <file|url>]
-                    [--host <host>] [--out <file>] [--json]
+                    [--host <host>] [--out <file>] [--diff] [--json]
       ADVISES the file starting from the observed traffic, and explains why.
-      --log accepts "-" for stdin and transparently reads gzipped logs.
+      --log accepts "-" for stdin and transparently reads gzipped logs, and is the
+      only input that can show WHICH paths an unknown crawler asked for.
+      --diff reviews what would change against --current instead of printing the
+      whole file: reviewing is what decides whether the advice gets applied.
       --ua-counts accepts the output of "... | sort | uniq -c" (count + user-agent).
+
+  robotsmith crawlers [--json]
+      Prints the classification table in evaluation order: family, policy, the token
+      written in the robots.txt, and why. It is the opinion this tool applies —
+      readable before you run it on your logs.
 
   robotsmith version | help
 
@@ -199,8 +211,8 @@ func takesValue(f string) bool {
 // checkOpts, lintOpts and adviseOpts exist so flag registration lives in one place per command:
 // the documentation gate walks these flag sets, so a new flag is documented or CI goes red.
 type checkOpts struct {
-	origin, path  string
-	quiet, asJSON bool
+	origin, path            string
+	quiet, asJSON, sitemaps bool
 }
 
 func checkFlags(errw io.Writer) (*flag.FlagSet, *checkOpts) {
@@ -209,6 +221,16 @@ func checkFlags(errw io.Writer) (*flag.FlagSet, *checkOpts) {
 	fs.StringVar(&o.origin, "origin", "", "URL of the robots.txt on the origin")
 	fs.StringVar(&o.path, "path", "/", "path to test")
 	fs.BoolVar(&o.quiet, "quiet", false, "print the verdict only")
+	fs.BoolVar(&o.sitemaps, "sitemaps", false, "also check that every Sitemap: URL answers (makes network calls)")
+	fs.BoolVar(&o.asJSON, "json", false, "emit a machine-readable document on stdout")
+	return fs, o
+}
+
+type crawlersOpts struct{ asJSON bool }
+
+func crawlersFlags(errw io.Writer) (*flag.FlagSet, *crawlersOpts) {
+	fs := newFlagSet("crawlers", errw)
+	o := &crawlersOpts{}
 	fs.BoolVar(&o.asJSON, "json", false, "emit a machine-readable document on stdout")
 	return fs, o
 }
@@ -225,7 +247,7 @@ func lintFlags(errw io.Writer) (*flag.FlagSet, *lintOpts) {
 
 type adviseOpts struct {
 	logFile, uaCounts, current, host, outFile string
-	asJSON                                    bool
+	asJSON, diff                              bool
 }
 
 func adviseFlags(errw io.Writer) (*flag.FlagSet, *adviseOpts) {
@@ -236,6 +258,7 @@ func adviseFlags(errw io.Writer) (*flag.FlagSet, *adviseOpts) {
 	fs.StringVar(&o.current, "current", "", "current robots.txt (file or URL): its rules are preserved")
 	fs.StringVar(&o.host, "host", "", "host of the site, to validate the Sitemap line")
 	fs.StringVar(&o.outFile, "out", "", "write the advised file here instead of on stdout")
+	fs.BoolVar(&o.diff, "diff", false, "review what would change against --current, instead of printing the file")
 	fs.BoolVar(&o.asJSON, "json", false, "emit a machine-readable document on stdout")
 	return fs, o
 }
@@ -254,7 +277,8 @@ func cmdCheck(args []string, out, errw io.Writer) int {
 		fmt.Fprintln(errw, "invalid URL:", err)
 		return 2
 	}
-	res, err := check.Run(u, opt.origin, opt.path)
+	res, err := check.RunWith(check.Options{URL: u, Origin: opt.origin, Path: opt.path,
+		Sitemaps: opt.sitemaps})
 	if err != nil {
 		fmt.Fprintln(errw, "[4]", err)
 		return 4
@@ -277,6 +301,10 @@ func cmdCheck(args []string, out, errw io.Writer) int {
 		for _, f := range findings {
 			fmt.Fprintf(out, "  %s %s\n", f.Sev, f.Msg)
 		}
+		for _, sm := range res.Sitemaps {
+			fmt.Fprintf(out, "  sitemap %s — HTTP %d, %s, %s\n", sm.URL, sm.Status, sm.ContentType,
+				humanBytes(sm.Bytes))
+		}
 	}
 	if len(res.Problems) == 0 {
 		fmt.Fprintf(out, "✅ OK — %d cases verified\n", res.Cases)
@@ -290,6 +318,45 @@ func cmdCheck(args []string, out, errw io.Writer) int {
 		fmt.Fprintln(out, "\n⛔ A search engine is blocked: fix this now.")
 	}
 	return 1
+}
+
+// cmdCrawlers publishes the policy table. ⚠️ The order is the answer, not a presentation detail:
+// the first matching pattern wins, so the listing is never sorted.
+func cmdCrawlers(args []string, out, errw io.Writer) int {
+	fs, opt := crawlersFlags(errw)
+	if err := fs.Parse(reorderArgs(args)); err != nil {
+		return 2
+	}
+	rules := advise.Rules()
+	if opt.asJSON {
+		if err := report.Write(out, report.FromRules(rules)); err != nil {
+			fmt.Fprintln(errw, err)
+			return 1
+		}
+		return 0
+	}
+	label := map[advise.Policy]string{
+		advise.Allow: "ALLOW ", advise.Block: "BLOCK ", advise.Candidate: "REVIEW", advise.Ignore: "IGNORE",
+	}
+	fmt.Fprintf(out, "%d rules, in evaluation order — the FIRST match wins.\n\n", len(rules))
+	for _, r := range rules {
+		token := r.Token
+		switch {
+		case token != "":
+		case r.Family == advise.Unknown:
+			// An unknown crawler is addressable: the token is taken from its own UA when observed.
+			token = "(derived from the UA)"
+		default:
+			// No token at all means robots.txt cannot address it (a browser, a monitor): saying so
+			// is more useful than leaving the column blank.
+			token = "— not addressable"
+		}
+		fmt.Fprintf(out, "%s %-11s %-22s %s\n", label[r.Policy], r.Family, token, r.Pattern)
+		if r.Why != "" {
+			fmt.Fprintf(out, "%13s%s\n", "", r.Why)
+		}
+	}
+	return 0
 }
 
 func cmdLint(args []string, out, errw io.Writer) int {
@@ -381,6 +448,9 @@ func cmdAdvise(args []string, out, errw io.Writer) int {
 	a := advise.Analyze(obs)
 	text := advise.Render(a, existing, opt.host)
 
+	if opt.diff {
+		return printDiff(out, errw, a, existing, opt.host)
+	}
 	if opt.asJSON {
 		if err := report.Write(out, report.FromAdvise(a, text, len(obs))); err != nil {
 			fmt.Fprintln(errw, err)
@@ -397,6 +467,25 @@ func cmdAdvise(args []string, out, errw io.Writer) int {
 		}[d.Policy]
 		fmt.Fprintf(errw, "  %s %-22s %6.2f%%  %s\n", label, d.Name, d.Share, d.Why)
 	}
+	for _, d := range a.Decisions {
+		// ⚠️ Only for the decisions a person has to take. For an ALLOW or a BLOCK the policy is the
+		// answer; for a REVIEW the shape of the traffic IS the argument.
+		if d.Policy != advise.Candidate || d.Evidence == nil {
+			continue
+		}
+		fmt.Fprintf(errw, "\n  %s — what it asked for:\n", d.Name)
+		for _, p := range d.Evidence.TopPaths {
+			fmt.Fprintf(errw, "      %8d  %s\n", p.Requests, p.Path)
+		}
+		if span := d.Evidence.Last.Sub(d.Evidence.First); span > 0 {
+			fmt.Fprintf(errw, "      spread over %s (%s → %s): a crawl, not a burst\n",
+				span.Round(time.Minute), d.Evidence.First.Format("2006-01-02 15:04"),
+				d.Evidence.Last.Format("15:04"))
+		} else if !d.Evidence.First.IsZero() {
+			fmt.Fprintf(errw, "      all within one timestamp (%s): a burst\n",
+				d.Evidence.First.Format("2006-01-02 15:04"))
+		}
+	}
 	if a.Saving > 0 {
 		fmt.Fprintf(errw, "\nThe advised blocks touch %.1f%% of the observed requests.\n", a.Saving)
 	}
@@ -412,6 +501,40 @@ func cmdAdvise(args []string, out, errw io.Writer) int {
 		return 0
 	}
 	fmt.Fprint(out, text)
+	return 0
+}
+
+// printDiff answers the reviewer's question — what would applying this change? — instead of
+// handing over a second sixty-line file to compare by eye. The asymmetric risk is the reason: a
+// review that is hard does not happen, and the mistake it would have caught costs weeks of traffic.
+func printDiff(out, errw io.Writer, a *advise.Advice, existing, host string) int {
+	changes := advise.Diff(a, existing, host)
+	if existing == "" {
+		fmt.Fprintln(errw, "no --current given: everything below would be new.")
+	}
+	if advise.AllKept(changes) {
+		fmt.Fprintln(out, "✅ Nothing to change: the current file already says what the traffic advises.")
+		return 0
+	}
+	mark := map[advise.ChangeKind]string{
+		advise.Added: "+", advise.Flipped: "!", advise.Kept: "=", advise.Carried: "~",
+	}
+	for _, c := range changes {
+		if c.Kind == advise.Kept {
+			continue // a review shows what moves, not what stands still
+		}
+		line := fmt.Sprintf("%s %-22s %-14s", mark[c.Kind], c.Agent, c.Directive)
+		if c.Share > 0 {
+			line += fmt.Sprintf("%6.2f%%  ", c.Share)
+		} else {
+			line += "         "
+		}
+		fmt.Fprintln(out, line+c.Why)
+		if c.Kind == advise.Flipped {
+			fmt.Fprintf(out, "%25s⚠️  the file currently says: %s\n", "", c.Was)
+		}
+	}
+	fmt.Fprintln(out, "\n+ added   ! the file says the opposite   ~ kept verbatim (not advised here)")
 	return 0
 }
 
@@ -483,10 +606,35 @@ func readLog(path string, stdin io.Reader) ([]advise.Observation, error) {
 	}
 
 	count := map[string]int64{}
+	paths := map[string]map[string]int64{}
+	first := map[string]time.Time{}
+	last := map[string]time.Time{}
 	sc := scanner(src)
 	for sc.Scan() {
-		for _, ua := range userAgentsIn(sc.Text()) {
+		line := sc.Text()
+		uas := userAgentsIn(line)
+		if len(uas) == 0 {
+			continue
+		}
+		path := pathIn(line)
+		when := timeIn(line)
+		for _, ua := range uas {
 			count[ua]++
+			if path != "" {
+				if paths[ua] == nil {
+					paths[ua] = map[string]int64{}
+				}
+				paths[ua][path]++
+			}
+			if when.IsZero() {
+				continue
+			}
+			if f, ok := first[ua]; !ok || when.Before(f) {
+				first[ua] = when
+			}
+			if when.After(last[ua]) {
+				last[ua] = when
+			}
 		}
 	}
 	if err := sc.Err(); err != nil {
@@ -494,7 +642,15 @@ func readLog(path string, stdin io.Reader) ([]advise.Observation, error) {
 	}
 	var obs []advise.Observation
 	for ua, n := range count {
-		obs = append(obs, advise.Observation{UA: ua, Requests: n})
+		o := advise.Observation{UA: ua, Requests: n}
+		if len(paths[ua]) > 0 || !first[ua].IsZero() {
+			o.Evidence = &advise.Evidence{
+				TopPaths: advise.TopPaths(paths[ua], 5),
+				First:    first[ua],
+				Last:     last[ua],
+			}
+		}
+		obs = append(obs, o)
 	}
 	sort.Slice(obs, func(i, j int) bool { return obs[i].Requests > obs[j].Requests })
 	return obs, nil
@@ -544,6 +700,44 @@ func userAgentsIn(line string) []string {
 	return out
 }
 
+// pathIn pulls the requested path out of the quoted request line (`GET /news/a HTTP/1.1`). The
+// query string is dropped: for judging a crawler, `/search?p=2` and `/search?p=3` are one place.
+func pathIn(line string) string {
+	parts := strings.Split(line, `"`)
+	for i := 1; i < len(parts); i += 2 {
+		if !isRequestLine(parts[i]) {
+			continue
+		}
+		f := strings.Fields(parts[i])
+		if len(f) < 2 {
+			return ""
+		}
+		return strings.SplitN(f[1], "?", 2)[0]
+	}
+	return ""
+}
+
+// logTimeLayouts covers what the two log formats put between brackets. ⚠️ A format that carries no
+// date at all is a reason to report less, never to fail: the user-agent counts must always work.
+var logTimeLayouts = []string{
+	"02/Jan/2006:15:04:05 -0700", // nginx combined
+	"02/Jan/2006:15:04:05.000",   // HAProxy httplog
+	"02/Jan/2006:15:04:05",
+}
+
+var reBracketed = regexp.MustCompile(`\[([^\]]+)\]`)
+
+func timeIn(line string) time.Time {
+	for _, m := range reBracketed.FindAllStringSubmatch(line, -1) {
+		for _, layout := range logTimeLayouts {
+			if t, err := time.Parse(layout, m[1]); err == nil {
+				return t
+			}
+		}
+	}
+	return time.Time{}
+}
+
 func isRequestLine(s string) bool {
 	for _, m := range []string{"GET ", "POST ", "PUT ", "DELETE ", "HEAD ", "OPTIONS ", "PATCH "} {
 		if strings.HasPrefix(s, m) {
@@ -551,6 +745,19 @@ func isRequestLine(s string) bool {
 		}
 	}
 	return false
+}
+
+// humanBytes keeps a size readable at a glance: a sitemap is either a few KB or tens of MB, and
+// the difference matters more than the exact number.
+func humanBytes(n int64) string {
+	switch {
+	case n >= 1<<20:
+		return fmt.Sprintf("%.1f MB", float64(n)/(1<<20))
+	case n >= 1<<10:
+		return fmt.Sprintf("%.0f KB", float64(n)/(1<<10))
+	default:
+		return fmt.Sprintf("%d B", n)
+	}
 }
 
 // scanner reads long lines without choking: a user-agent string can be absurdly long, and the

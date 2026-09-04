@@ -39,16 +39,43 @@ type Result struct {
 	Cases    int
 	Failed   int
 	Deindex  bool // at least one search engine is blocked: the only urgent case
+	// Sitemaps is filled only when Options.Sitemaps asked for it: see SitemapReport.
+	Sitemaps []SitemapReport
+}
+
+// SitemapReport is what one `Sitemap:` line actually answers. `lint` checks the host, which catches
+// a copy-paste from another site; this catches the more common one — a sitemap that 404s or
+// redirects after a migration, invisible until Search Console complains weeks later.
+type SitemapReport struct {
+	URL         string
+	Status      int
+	ContentType string
+	Bytes       int64
+	Problem     string
+}
+
+// Options is the full form of the verification. ⚠️ Sitemaps defaults to off on purpose: a
+// verification tool must not make network calls nobody asked for, and the sitemap of a large site
+// is a big file.
+type Options struct {
+	URL      string
+	Origin   string
+	Path     string
+	Sitemaps bool
 }
 
 var client = &http.Client{Timeout: 20 * time.Second}
+
+// userAgent identifies this tool to whoever reads their logs: a crawler-policy tool showing up
+// disguised would be a poor joke.
+const userAgent = "robotsmith/1.0 (+github.com/Allan-Nava/robotsmith)"
 
 func fetch(u string) (string, http.Header, error) {
 	req, err := http.NewRequest("GET", u, nil)
 	if err != nil {
 		return "", nil, err
 	}
-	req.Header.Set("User-Agent", "robotsmith/1.0 (+github.com/Allan-Nava/robotsmith)")
+	req.Header.Set("User-Agent", userAgent)
 	resp, err := client.Do(req)
 	if err != nil {
 		return "", nil, err
@@ -71,6 +98,12 @@ func fetch(u string) (string, http.Header, error) {
 // the cache key — the normal setup for a static file — both fetches return the same copy and the
 // comparison reports "up to date" while the CDN serves the old one.
 func Run(pubURL, originURL string, path string) (*Result, error) {
+	return RunWith(Options{URL: pubURL, Origin: originURL, Path: path})
+}
+
+// RunWith is Run with everything that is off by default.
+func RunWith(o Options) (*Result, error) {
+	pubURL, originURL, path := o.URL, o.Origin, o.Path
 	body, hdr, err := fetch(pubURL)
 	if err != nil {
 		return nil, fmt.Errorf("%s not reachable: %w", pubURL, err)
@@ -113,7 +146,45 @@ func Run(pubURL, originURL string, path string) (*Result, error) {
 			r.Problems = append(r.Problems, fmt.Sprintf("`%s` gets through but should be blocked", ua))
 		}
 	}
+	if o.Sitemaps {
+		for _, sm := range rt.Sitemaps {
+			rep := fetchSitemap(sm)
+			r.Sitemaps = append(r.Sitemaps, rep)
+			if rep.Problem != "" {
+				r.Problems = append(r.Problems, fmt.Sprintf("the sitemap %s %s", rep.URL, rep.Problem))
+			}
+		}
+	}
 	return r, nil
+}
+
+// fetchSitemap asks the sitemap whether it is there. It reads the body only to size it: nothing
+// here parses XML, because "does it answer" is the question that goes unnoticed, not "is it valid".
+func fetchSitemap(u string) SitemapReport {
+	rep := SitemapReport{URL: u}
+	req, err := http.NewRequest("GET", u, nil)
+	if err != nil {
+		rep.Problem = "is not a valid URL: " + err.Error()
+		return rep
+	}
+	req.Header.Set("User-Agent", userAgent)
+	resp, err := client.Do(req)
+	if err != nil {
+		rep.Problem = "is not reachable: " + err.Error()
+		return rep
+	}
+	defer resp.Body.Close()
+	rep.Status = resp.StatusCode
+	rep.ContentType = strings.TrimSpace(strings.Split(resp.Header.Get("Content-Type"), ";")[0])
+	n, _ := io.Copy(io.Discard, io.LimitReader(resp.Body, 64<<20))
+	rep.Bytes = n
+	switch {
+	case resp.StatusCode != 200:
+		rep.Problem = fmt.Sprintf("answers HTTP %d: search engines cannot read it", resp.StatusCode)
+	case n == 0:
+		rep.Problem = "answers 200 with an empty body"
+	}
+	return rep
 }
 
 func isSearchEngine(ua string) bool {

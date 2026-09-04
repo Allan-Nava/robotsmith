@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 const nginxLine = `1.2.3.4 - - [01/Sep/2026:10:00:00 +0000] "GET /a HTTP/1.1" 200 12 "-" "Mozilla/5.0 (compatible; GPTBot/1.4)"`
@@ -95,5 +96,57 @@ func TestAdviseReadsAGzippedLogEndToEnd(t *testing.T) {
 	}
 	if !strings.Contains(stdout, "User-agent: GPTBot") {
 		t.Errorf("the advice must reach the generated file:\n%s", stdout)
+	}
+}
+
+func TestReadLogCollectsPathsAndTimeSpan(t *testing.T) {
+	// For an unknown crawler the decision a person has to make — channel or leech? — needs the
+	// shape of the traffic, and `--log` already reads the lines that carry it.
+	log := `1.1.1.1 - - [01/Sep/2026:10:00:00 +0000] "GET /news/a HTTP/1.1" 200 1 "-" "Mozilla/5.0 (compatible; SomeSpider/1.0)"
+1.1.1.1 - - [01/Sep/2026:11:30:00 +0000] "GET /news/a HTTP/1.1" 200 1 "-" "Mozilla/5.0 (compatible; SomeSpider/1.0)"
+1.1.1.1 - - [01/Sep/2026:14:00:00 +0000] "GET /archive/b HTTP/1.1" 200 1 "-" "Mozilla/5.0 (compatible; SomeSpider/1.0)"
+`
+	obs, err := readLog(writeTemp(t, "access.log", log), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(obs) != 1 {
+		t.Fatalf("expected one user-agent, got %+v", obs)
+	}
+	ev := obs[0].Evidence
+	if ev == nil {
+		t.Fatal("a log carries paths and timestamps: they must not be thrown away")
+	}
+	if len(ev.TopPaths) == 0 || ev.TopPaths[0].Path != "/news/a" || ev.TopPaths[0].Requests != 2 {
+		t.Errorf("top paths = %+v, expected /news/a twice first", ev.TopPaths)
+	}
+	if ev.Last.Sub(ev.First) != 4*time.Hour {
+		t.Errorf("span = %v, expected 4h: a crawl spread over hours is not a burst", ev.Last.Sub(ev.First))
+	}
+}
+
+func TestReadLogSurvivesALineWithNoTimestamp(t *testing.T) {
+	// A custom log-format may not carry a date at all. That is a reason to report less, never to
+	// fail: the user-agent counts are the part that must always work.
+	obs, err := readLog("-", strings.NewReader(`- - - "GET /x HTTP/1.1" 200 1 "-" "Mozilla/5.0 (compatible; SomeSpider/1.0)"`+"\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(obs) != 1 || obs[0].Requests != 1 {
+		t.Fatalf("observations = %+v", obs)
+	}
+	if ev := obs[0].Evidence; ev == nil || len(ev.TopPaths) != 1 || !ev.First.IsZero() {
+		t.Errorf("evidence = %+v: the path is known, the time is not", obs[0].Evidence)
+	}
+}
+
+func TestUACountsCarryNoEvidence(t *testing.T) {
+	// A `uniq -c` count cannot know paths or times: claiming otherwise would be an invention.
+	obs, err := readCounts(writeTemp(t, "ua.txt", "10 Mozilla/5.0 (compatible; SomeSpider/1.0)\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if obs[0].Evidence != nil {
+		t.Error("a count file has no evidence to carry")
 	}
 }

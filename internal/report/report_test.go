@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Allan-Nava/robotsmith/internal/advise"
 	"github.com/Allan-Nava/robotsmith/internal/check"
@@ -117,5 +118,82 @@ func TestCheckReportCarriesTheCacheHeadersWhenTheCDNSaysAnything(t *testing.T) {
 	}
 	if strings.Contains(b.String(), `"cache"`) {
 		t.Errorf("an absent cache must not serialise at all:\n%s", b.String())
+	}
+}
+
+func TestCrawlersDocKeepsEvaluationOrder(t *testing.T) {
+	// The first matching pattern wins, so the order is the answer: the document must not sort.
+	d := FromRules(advise.Rules())
+	if d.Schema != SchemaCrawlers || len(d.Rules) < 40 {
+		t.Fatalf("document = %+v", d.Schema)
+	}
+	if d.Rules[0].Token != "Googlebot" {
+		t.Errorf("first rule = %+v, expected the allowlist first", d.Rules[0])
+	}
+	for _, r := range d.Rules {
+		if r.Family == "" || r.Policy == "" || r.Pattern == "" {
+			t.Errorf("rule with an empty field: %+v", r)
+		}
+	}
+}
+
+func TestAdviseDocCarriesEvidenceOnlyWhenThereIsSome(t *testing.T) {
+	// From a log: paths and a span. From a count: nothing, and the field must be absent rather
+	// than an empty object a consumer would have to interpret.
+	when := time.Date(2026, 9, 4, 10, 0, 0, 0, time.UTC)
+	withLog := advise.Analyze([]advise.Observation{
+		{UA: "Mozilla/5.0 (compatible; SomeSpider/1.0)", Requests: 5000, Evidence: &advise.Evidence{
+			TopPaths: []advise.PathCount{{Path: "/archive", Requests: 4000}},
+			First:    when, Last: when.Add(3 * time.Hour),
+		}},
+		{UA: "Mozilla/5.0 (Windows NT 10.0) Chrome/148", Requests: 5000},
+	})
+	d := FromAdvise(withLog, "file", 2)
+	var seen bool
+	for _, dec := range d.Decisions {
+		if dec.Name != "SomeSpider" {
+			continue
+		}
+		seen = true
+		if dec.Evidence == nil || len(dec.Evidence.TopPaths) != 1 {
+			t.Fatalf("evidence = %+v", dec.Evidence)
+		}
+		if dec.Evidence.TopPaths[0].Path != "/archive" || dec.Evidence.FirstSeen == "" {
+			t.Errorf("evidence = %+v", dec.Evidence)
+		}
+		if dec.Evidence.LastSeen != "2026-09-04T13:00:00Z" {
+			t.Errorf("last_seen = %q, expected RFC 3339 in UTC", dec.Evidence.LastSeen)
+		}
+	}
+	if !seen {
+		t.Fatal("SomeSpider must appear among the decisions")
+	}
+
+	bare := FromAdvise(advise.Analyze([]advise.Observation{
+		{UA: "Mozilla/5.0 (compatible; GPTBot/1.4)", Requests: 10},
+	}), "file", 1)
+	var b bytes.Buffer
+	if err := Write(&b, bare); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(b.String(), "evidence") {
+		t.Errorf("a count input must claim no evidence at all:\n%s", b.String())
+	}
+}
+
+func TestCheckDocReportsSitemapAnswers(t *testing.T) {
+	res := &check.Result{URL: "u", Headers: http.Header{}, Sitemaps: []check.SitemapReport{
+		{URL: "https://example.com/sitemap.xml", Status: 404, Problem: "answers HTTP 404"},
+	}}
+	d := FromCheck(res, "/", nil)
+	if len(d.Sitemaps) != 1 || d.Sitemaps[0].Status != 404 || d.Sitemaps[0].Problem == "" {
+		t.Errorf("sitemaps = %+v", d.Sitemaps)
+	}
+	var b bytes.Buffer
+	if err := Write(&b, FromCheck(&check.Result{URL: "u", Headers: http.Header{}}, "/", nil)); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(b.String(), "sitemaps") {
+		t.Error("with --sitemaps off the field must not appear at all")
 	}
 }

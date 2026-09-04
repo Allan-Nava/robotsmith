@@ -12,6 +12,7 @@ package report
 import (
 	"encoding/json"
 	"io"
+	"time"
 
 	"github.com/Allan-Nava/robotsmith/internal/advise"
 	"github.com/Allan-Nava/robotsmith/internal/check"
@@ -19,9 +20,10 @@ import (
 )
 
 const (
-	SchemaCheck  = "robotsmith.check/1"
-	SchemaLint   = "robotsmith.lint/1"
-	SchemaAdvise = "robotsmith.advise/1"
+	SchemaCheck    = "robotsmith.check/1"
+	SchemaLint     = "robotsmith.lint/1"
+	SchemaAdvise   = "robotsmith.advise/1"
+	SchemaCrawlers = "robotsmith.crawlers/1"
 )
 
 // Finding is one structural defect, in the shape a CI annotation needs: severity, message, line.
@@ -49,6 +51,18 @@ type CheckDoc struct {
 	Problems []string  `json:"problems"`
 	Findings []Finding `json:"findings"`
 	Cache    *Cache    `json:"cache,omitempty"`
+	// Sitemaps appears only when --sitemaps asked for it. Adding an optional field is not a
+	// breaking change, so the schema stays at /1.
+	Sitemaps []Sitemap `json:"sitemaps,omitempty"`
+}
+
+// Sitemap is one `Sitemap:` line and what it answered.
+type Sitemap struct {
+	URL         string `json:"url"`
+	Status      int    `json:"status"`
+	ContentType string `json:"content_type,omitempty"`
+	Bytes       int64  `json:"bytes"`
+	Problem     string `json:"problem,omitempty"`
 }
 
 // LintDoc is the document produced by `lint --json`.
@@ -70,6 +84,21 @@ type Decision struct {
 	Requests int64   `json:"requests"`
 	Share    float64 `json:"share"`
 	Why      string  `json:"why"`
+	// Evidence is present only when the input was a real log (a `uniq -c` count cannot know it).
+	Evidence *Evidence `json:"evidence,omitempty"`
+}
+
+// Evidence is the shape of the traffic behind a decision: which paths, over how long.
+type Evidence struct {
+	TopPaths  []PathCount `json:"top_paths"`
+	FirstSeen string      `json:"first_seen,omitempty"`
+	LastSeen  string      `json:"last_seen,omitempty"`
+}
+
+// PathCount is one path and how often it was asked for.
+type PathCount struct {
+	Path     string `json:"path"`
+	Requests int64  `json:"requests"`
 }
 
 // AdviseDoc is the document produced by `advise --json`. It carries the advised file too: a
@@ -84,6 +113,32 @@ type AdviseDoc struct {
 	RobotsTxt   string     `json:"robots_txt"`
 }
 
+// Rule is one classification rule as published by `crawlers`.
+type Rule struct {
+	Pattern string `json:"pattern"`
+	Family  string `json:"family"`
+	Policy  string `json:"policy"`
+	Token   string `json:"token"`
+	Why     string `json:"why"`
+}
+
+// CrawlersDoc is the document produced by `crawlers --json`. The rules stay in EVALUATION order:
+// the first matching pattern wins, so the order is part of the answer.
+type CrawlersDoc struct {
+	Schema string `json:"schema"`
+	Rules  []Rule `json:"rules"`
+}
+
+// FromRules builds the crawlers document.
+func FromRules(in []advise.RuleInfo) CrawlersDoc {
+	d := CrawlersDoc{Schema: SchemaCrawlers, Rules: make([]Rule, 0, len(in))}
+	for _, r := range in {
+		d.Rules = append(d.Rules, Rule{Pattern: r.Pattern, Family: r.Family.String(),
+			Policy: policyName(r.Policy), Token: r.Token, Why: r.Why})
+	}
+	return d
+}
+
 // FromCheck builds the check document. `findings` is the structural pass run on the same body.
 func FromCheck(res *check.Result, path string, findings []lint.Finding) CheckDoc {
 	d := CheckDoc{
@@ -96,6 +151,10 @@ func FromCheck(res *check.Result, path string, findings []lint.Finding) CheckDoc
 		Deindex:  res.Deindex,
 		Problems: strings2(res.Problems),
 		Findings: findings2(findings),
+	}
+	for _, sm := range res.Sitemaps {
+		d.Sitemaps = append(d.Sitemaps, Sitemap{URL: sm.URL, Status: sm.Status,
+			ContentType: sm.ContentType, Bytes: sm.Bytes, Problem: sm.Problem})
 	}
 	if res.Headers != nil {
 		if x, age := res.Headers.Get("X-Cache"), res.Headers.Get("Age"); x != "" || age != "" {
@@ -132,10 +191,22 @@ func FromAdvise(a *advise.Advice, robotsTxt string, userAgents int) AdviseDoc {
 		RobotsTxt:   robotsTxt,
 	}
 	for _, x := range a.Decisions {
-		d.Decisions = append(d.Decisions, Decision{
+		dec := Decision{
 			Name: x.Name, UA: x.UA, Family: x.Family.String(), Policy: policyName(x.Policy),
 			Requests: x.Requests, Share: x.Share, Why: x.Why,
-		})
+		}
+		if x.Evidence != nil {
+			ev := &Evidence{TopPaths: make([]PathCount, 0, len(x.Evidence.TopPaths))}
+			for _, p := range x.Evidence.TopPaths {
+				ev.TopPaths = append(ev.TopPaths, PathCount{Path: p.Path, Requests: p.Requests})
+			}
+			if !x.Evidence.First.IsZero() {
+				ev.FirstSeen = x.Evidence.First.UTC().Format(time.RFC3339)
+				ev.LastSeen = x.Evidence.Last.UTC().Format(time.RFC3339)
+			}
+			dec.Evidence = ev
+		}
+		d.Decisions = append(d.Decisions, dec)
 	}
 	return d
 }

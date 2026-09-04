@@ -68,7 +68,11 @@ func Render(a *Advice, existing, host string) string {
 		}
 	}
 
-	// 3) The `*` group: existing rules carried over as they are.
+	// 3) Hand-written groups for crawlers the advice knows nothing about. ⚠️ Before this they were
+	//    silently dropped, which is the one damage this tool must never do (see INTENT.md).
+	renderCarried(&b, carriedGroups(a, cur))
+
+	// 4) The `*` group: existing rules carried over as they are.
 	b.WriteString("\n# ── General rules ───────────────────────────────────────────────────\n")
 	star := starGroup(cur)
 	if star == nil {
@@ -98,7 +102,7 @@ func Render(a *Advice, existing, host string) string {
 		}
 	}
 
-	// 4) Sitemap: only if it is on the same host.
+	// 5) Sitemap: only if it is on the same host.
 	for _, sm := range cur.Sitemaps {
 		if sameHost(sm, host) {
 			b.WriteString("\nSitemap: " + sm + "\n")
