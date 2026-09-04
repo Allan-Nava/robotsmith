@@ -26,8 +26,13 @@ type Rule struct {
 
 // Group is one record of the file: one or more user-agents with their rules.
 type Group struct {
+	// Agents is lowercased, because user-agent matching is case-insensitive.
 	Agents []string
-	Rules  []Rule
+	// AgentsRaw is the same list as written in the file. Anything that writes a group back out
+	// uses it: rewriting "YandexBot" as "yandexbot" changes nothing for a crawler and reads, to a
+	// person, like the tool mangled their file.
+	AgentsRaw []string
+	Rules     []Rule
 	// StartLine is the line of the group's first `User-agent:` (used in diagnostics).
 	StartLine int
 }
@@ -78,6 +83,7 @@ func Parse(body string) *RobotsTxt {
 				inGroup = true
 			}
 			cur.Agents = append(cur.Agents, strings.ToLower(val))
+			cur.AgentsRaw = append(cur.AgentsRaw, val)
 		case "allow", "disallow":
 			rule := Rule{Allow: key == "allow", Pattern: val, Line: i + 1}
 			if inGroup && cur != nil && len(cur.Agents) > 0 {

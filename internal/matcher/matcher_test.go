@@ -1,6 +1,9 @@
 package matcher
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestLongestMatchWins(t *testing.T) {
 	// The case that separates the RFC from a first-match parser: with `Allow: /` first, a
@@ -72,5 +75,22 @@ func TestEmptyFileAllowsEverything(t *testing.T) {
 	r := Parse("")
 	if !r.Allowed("YisouSpider", "/") {
 		t.Error("an empty file (200 with 0 bytes) means everything is allowed")
+	}
+}
+
+func TestParseKeepsTheOriginalSpellingOfAnAgent(t *testing.T) {
+	// Matching is case-insensitive, so Agents is lowercased. But anything that writes a group back
+	// out needs the spelling a person chose: rewriting "YandexBot" as "yandexbot" is equivalent to
+	// a crawler and reads, to a human, like the tool mangled their file.
+	r := Parse("User-agent: YandexBot\nUser-agent: Applebot-Extended\nDisallow: /search\n")
+	if len(r.Groups) != 1 {
+		t.Fatalf("expected one group, got %d", len(r.Groups))
+	}
+	g := r.Groups[0]
+	if strings.Join(g.Agents, ",") != "yandexbot,applebot-extended" {
+		t.Errorf("Agents = %v: matching needs them lowercased", g.Agents)
+	}
+	if strings.Join(g.AgentsRaw, ",") != "YandexBot,Applebot-Extended" {
+		t.Errorf("AgentsRaw = %v: rendering needs the original spelling", g.AgentsRaw)
 	}
 }
