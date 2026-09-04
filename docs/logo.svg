@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 72" width="300" height="72"
+     role="img" aria-label="robotsmith">
+  <title>robotsmith</title>
+  <style>
+    .ink  { fill: #14161a; }
+    .fire { fill: #e2571f; }
+    .fs   { stroke: #e2571f; }
+    .sub  { fill: #6b6f76; }
+  </style>
+  <g transform="translate(4,4) scale(1)">
+    <rect class="ink" x="22" y="8" width="20" height="15" rx="4"/>
+    <rect class="ink" x="31" y="4" width="2" height="5" rx="1"/>
+    <circle class="ink" cx="32" cy="3.4" r="1.9"/>
+    <circle class="fire" cx="27.5" cy="15.5" r="2.1"/>
+    <circle class="fire" cx="36.5" cy="15.5" r="2.1"/>
+    <g class="fs" stroke-width="2" stroke-linecap="round" fill="none">
+      <path d="M48 20.5l3.5-3"/>
+      <path d="M15 20.5l-3.5-3"/>
+    </g>
+    <rect class="ink" x="8" y="27" width="40" height="8" rx="2"/>
+    <path class="ink" d="M48 27.6l9 3.4-9 3.4z"/>
+    <rect class="ink" x="24" y="35" width="12" height="8"/>
+    <rect class="ink" x="13" y="43" width="34" height="8" rx="2"/>
+  </g>
+  <g font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace">
+    <text x="76" y="36" font-size="27" font-weight="700">
+      <tspan class="ink">robot</tspan><tspan class="fire">smith</tspan>
+    </text>
+    <text x="77" y="53" class="sub" font-size="10.5" letter-spacing=".5">your robots.txt, from your logs</text>
+  </g>
+</svg>

@@ -1,0 +1,300 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>robotsmith — your robots.txt, from your logs</title>
+<meta name="description" content="A Go CLI that verifies a robots.txt and advises how to write it starting from the traffic your site actually receives.">
+<link rel="icon" href="mark.svg" type="image/svg+xml">
+<meta property="og:title" content="robotsmith">
+<meta property="og:description" content="Verifies a robots.txt — and advises how to write it, from your real traffic.">
+<meta property="og:image" content="https://allan-nava.github.io/robotsmith/logo.svg">
+<style>
+  :root{
+    --bg:#faf8f5; --panel:#fff; --ink:#14161a; --muted:#5c6169; --line:#e4e0d9;
+    --fire:#e2571f; --ok:#1a7f4b; --warn:#a4620a; --code-bg:#f2efe9;
+    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{ --bg:#111316; --panel:#181b1f; --ink:#eceae5; --muted:#9aa0a8; --line:#282c31;
+           --fire:#ff7a45; --ok:#4ec98a; --warn:#e0a256; --code-bg:#0e1013; }
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+       font:16px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+       -webkit-font-smoothing:antialiased}
+  .wrap{max-width:860px;margin:0 auto;padding:0 22px}
+  a{color:var(--fire)}
+  header{padding:56px 0 34px;border-bottom:1px solid var(--line)}
+  header img{width:min(320px,90%);display:block;height:auto}
+  .lede{font-size:19px;margin:22px 0 0;max-width:62ch}
+  .lede b{font-weight:650}
+  .badges{display:flex;flex-wrap:wrap;gap:8px;margin-top:22px}
+  .badges a{display:inline-block;text-decoration:none;font:600 12px/1 var(--mono);
+            padding:7px 11px;border:1px solid var(--line);border-radius:999px;color:var(--muted);
+            background:var(--panel)}
+  .badges a:hover{color:var(--ink);border-color:var(--fire)}
+  h2{font-size:24px;margin:52px 0 6px;letter-spacing:-.2px}
+  h3{font-size:17px;margin:30px 0 4px}
+  h2+p,h3+p{margin-top:8px}
+  p,li{color:var(--ink)}
+  .sub{color:var(--muted)}
+  pre{background:var(--code-bg);border:1px solid var(--line);border-radius:10px;padding:14px 16px;
+      overflow-x:auto;font:13px/1.55 var(--mono);margin:16px 0}
+  code{font:.92em var(--mono);background:var(--code-bg);padding:1px 5px;border-radius:5px}
+  pre code{background:none;padding:0}
+  table{width:100%;border-collapse:collapse;margin:18px 0;font-size:15px;display:block;overflow-x:auto}
+  th,td{text-align:left;padding:10px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:18px 20px;margin:16px 0}
+  .cmds{display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));margin-top:20px}
+  .cmd{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px 18px}
+  .cmd h3{margin:0 0 6px;font:700 15px/1.2 var(--mono);color:var(--fire)}
+  .cmd p{margin:0;font-size:14px;color:var(--muted)}
+  .flow{font:12.5px/1.5 var(--mono);white-space:pre;overflow-x:auto;background:var(--code-bg);
+        border:1px solid var(--line);border-radius:10px;padding:16px}
+  .pill{font:600 11px/1 var(--mono);padding:3px 7px;border-radius:5px;border:1px solid var(--line);color:var(--muted)}
+  .allow{color:var(--ok);border-color:currentColor}
+  .block{color:var(--fire);border-color:currentColor}
+  .review{color:var(--warn);border-color:currentColor}
+  blockquote{margin:18px 0;padding:12px 16px;border-left:3px solid var(--fire);background:var(--panel);
+             border-radius:0 10px 10px 0}
+  blockquote p{margin:0}
+  footer{margin:64px 0 40px;padding-top:22px;border-top:1px solid var(--line);color:var(--muted);font-size:14px}
+  ul{padding-left:22px}
+  li+li{margin-top:6px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <picture>
+    <source srcset="logo-dark.svg" media="(prefers-color-scheme: dark)">
+    <img src="logo.svg" alt="robotsmith">
+  </picture>
+  <p class="lede">Verifies a <code>robots.txt</code> — and <b>advises how to write it</b> starting
+  from the traffic your site actually receives.</p>
+  <p class="sub">It comes out of a concrete problem: some crawlers were taking 5% of a site's
+  requests without bringing a single visit, and the question «what do I put in robots.txt?» had no
+  data-backed answer. The lists you find online are generic; a site's traffic is specific.</p>
+  <div class="badges">
+    <a href="https://github.com/Allan-Nava/robotsmith">GitHub</a>
+    <a href="https://github.com/Allan-Nava/robotsmith/blob/main/INTENT.md">Design rationale</a>
+    <a href="https://github.com/Allan-Nava/robotsmith/blob/main/CLAUDE.md">Contributing</a>
+    <a href="https://github.com/Allan-Nava/robotsmith/blob/main/AGENTS.md">For coding agents</a>
+    <a href="https://pkg.go.dev/github.com/Allan-Nava/robotsmith">pkg.go.dev</a>
+  </div>
+</header>
+
+<h2>Install</h2>
+<pre><code>go install github.com/Allan-Nava/robotsmith@latest</code></pre>
+<p class="sub">Go 1.24, no external dependencies — a single binary, fit for a CI pipeline.</p>
+
+<div class="cmds">
+  <div class="cmd">
+    <h3>check</h3>
+    <p>Is the file crawlers <em>actually see</em> the one you wrote? Fetches it, compares it with the
+    origin, runs 31 expected cases.</p>
+  </div>
+  <div class="cmd">
+    <h3>lint</h3>
+    <p>Does the file say what you think it says? Finds the structural defects that make it behave
+    differently from its author's intent.</p>
+  </div>
+  <div class="cmd">
+    <h3>advise</h3>
+    <p>What <em>should</em> you write, given your logs? Classifies the observed crawlers and
+    generates the file, explaining every line.</p>
+  </div>
+</div>
+
+<h2>Why writing four lines by hand is not enough</h2>
+<p>The risk is <b>asymmetric</b>. Blocking a scraper produces no visible effect; accidentally
+blocking Googlebot drops the site out of the index within weeks — and you notice once the traffic is
+already gone. So a <code>robots.txt</code> has to be verified, and the file can be <b>right and
+still not work</b>:</p>
+
+<table>
+  <thead><tr><th>Pitfall</th><th>What happens</th></tr></thead>
+  <tbody>
+    <tr><td>File served <b>200 with 0 bytes</b></td><td>that is not «everything forbidden», it is <b>everything allowed</b></td></tr>
+    <tr><td>A <b>blank line</b> inside a group</td><td>it closes the record: every rule after it is orphaned and a strict parser ignores it</td></tr>
+    <tr><td><code>Allow: /</code> <b>before</b> the <code>Disallow</code> rules</td><td>with a first-match parser it voids every prohibition</td></tr>
+    <tr><td>Change stuck in the <b>CDN cache</b></td><td>the file is correct on the origin and crawlers still see the old one</td></tr>
+    <tr><td><code>Sitemap:</code> on <b>another host</b></td><td>a cross-domain sitemap is not considered</td></tr>
+  </tbody>
+</table>
+
+<blockquote><p>⚠️ A <b>cache-buster does not help</b> you find that last one: if the query string is
+not part of the cache key — the normal setup for a static file — even <code>?cb=123</code> returns
+the old copy. The only reliable comparison is <b>public against origin</b>, which is what
+<code>--origin</code> does.</p></blockquote>
+
+<h2>The algorithm that advises the file</h2>
+<p><code>advise</code> does not apply a canned list: it reads the traffic and decides case by case.
+For every observed crawler it asks <b>one</b> question — <em>does this traffic bring me
+anything?</em> — and the answer determines the policy.</p>
+
+<div class="flow">   log / UA counts
+          │
+          ▼
+   ① CLASSIFY            ordered table of pattern → family
+          │              ⚠️ order matters: "Googlebot" contains "bot"
+          ▼
+   ② APPLY THE POLICY    per family:
+          │                search, social      → ALLOW  (they bring visits)
+          │                ai-user             → ALLOW  (fetch triggered by a person)
+          │                ai-training, seo    → BLOCK  (they take without giving)
+          │                tool, app, browser  → IGNORE (robots.txt does not concern them)
+          │                unknown + heavy     → REVIEW (a person decides)
+          ▼
+   ③ SORT BY VOLUME      blocking the one doing 5% beats blocking ten doing 0.1%
+          │
+          ▼
+   ④ GENERATE THE FILE   explicit allowlist, then the blocks, then the EXISTING RULES unchanged
+          │              never `Allow: /` before the prohibitions · never blank lines in a group
+          ▼
+   ⑤ STATE THE LIMITS    what robots.txt cannot stop, and how much traffic it cannot judge</div>
+
+<h3>The non-obvious choices, and why</h3>
+<ul>
+  <li><b><code>ChatGPT-User</code> and <code>OAI-SearchBot</code> are not training scrapers.</b> The
+  first is a fetch triggered by a person, the second feeds search results. Blocking them costs
+  visibility without removing load, so the policy is <span class="pill allow">ALLOW</span> even
+  though the name suggests otherwise.</li>
+  <li><b><code>Google-Extended</code> and <code>Applebot-Extended</code> are not User-Agents</b>:
+  they exist <b>only</b> for <code>robots.txt</code> (they mean «do not use my content for
+  training»). A UA-based rule for them does nothing; here they are emitted into the file, where they
+  mean something.</li>
+  <li><b>An unknown crawler is not automatically useless.</b> Above 3% of the requests it is
+  proposed <span class="pill review">active, with the number next to it</span> — the burden of proof
+  flips, it costs too much to ignore; below that it is proposed commented out, because a wrong block
+  is invisible.</li>
+  <li><b>Pre-existing rules are carried over unchanged.</b> They were written for that site and the
+  algorithm does not know why: if the previous file had <b>orphaned</b> rules (after a blank line)
+  they are recovered and flagged, not lost.</li>
+  <li><b>The closing warning accuses nobody.</b> A browser User-Agent with a high share is normal:
+  behind one string there are thousands of people. The tool only says that on that slice it cannot
+  reach a verdict, because telling a person from a disguised scraper needs the <b>per-IP rate</b> —
+  which <code>advise</code> does not look at.</li>
+</ul>
+
+<h3>Example</h3>
+<pre><code>$ robotsmith advise --ua-counts ua.txt --current https://example.com/robots.txt --host example.com
+Observed 182761 requests from 60 distinct user-agents.
+
+What I advise, and why:
+  ALLOW    ChatGPT-User             4.49%  fetch triggered by a person: blocking it costs visibility, not load
+  ALLOW    Googlebot                3.86%  brings visits: blocking it costs real traffic
+  BLOCK    Bytespider               3.15%  takes content for training without bringing visits
+  REVIEW   YisouSpider              6.27%  unrecognised but heavy crawler (6.3%): to be reviewed
+
+The advised blocks touch 11.4% of the observed requests.
+
+⚠️ 16.0% of the traffic declares a browser User-Agent: this command cannot tell whether there are
+   people or disguised scrapers behind it, because it does not look at the per-IP rate.</code></pre>
+
+<p class="sub">The file itself goes to stdout, every message to stderr — so
+<code>robotsmith advise … &gt; robots.txt</code> produces a clean file:</p>
+
+<pre><code># robots.txt generated by robotsmith (github.com/Allan-Nava/robotsmith)
+# Based on 62,970 observed requests. The advised blocks touch 28.8% of them.
+#
+# ⚠️ robots.txt is a REQUEST, not a control: whoever disguises itself as a browser ignores it.
+#    For those you need a request cap or a WAF.
+
+# ── Allowed on purpose: they bring visits ───────────────────────────
+# ai-user — fetch triggered by a person: blocking it costs visibility, not load
+User-agent: ChatGPT-User
+Allow: /
+
+# ── Blocked: they take content without bringing visits ──────────────
+User-agent: Bytespider
+Disallow: /
+# ⚠️ Unrecognised but heavy crawler: 18.2% of the requests (11,460).
+User-agent: YisouSpider
+Disallow: /
+
+# ── General rules ───────────────────────────────────────────────────
+User-agent: *
+Disallow: /admin/
+# ⚠️ The lines below were ORPHANED in the previous file (after a blank line
+#    inside the group): a strict parser ignored them. Recovered here.
+Disallow: /checkout/
+
+Sitemap: https://example.com/sitemap.xml</code></pre>
+
+<h2>Longest match, not first match</h2>
+<p>The parser is written in-house on purpose. The historical implementations (including Python's
+stdlib <code>robotparser</code>) apply the <b>first</b> matching rule; RFC 9309 — and Google — use
+the <b>longest match</b>, with <code>Allow</code> winning ties:</p>
+<pre><code>User-agent: *
+Allow: /
+Disallow: /login</code></pre>
+<p><code>/login</code> comes out <b>allowed</b> under first-match and <b>disallowed</b> under the
+RFC. A tool that advises what to write has to model how real crawlers behave, so it implements the
+second one — and <code>lint</code> still flags that layout, because not every crawler is
+compliant.</p>
+
+<h2>Usage</h2>
+<pre><code># verify: the file is there, it is fresh, it says the right thing (31 cases)
+robotsmith check example.com --origin https://internal.origin/robots.txt
+
+# structural defects of a local or remote file
+robotsmith lint ./robots.txt
+
+# advice from the logs (HAProxy or nginx), preserving the current rules
+robotsmith advise --log access.log \
+  --current https://example.com/robots.txt --host example.com --out robots.txt
+
+# or from a count you already have
+awk '{n=split($0,q,"\""); if(n&gt;=5) print q[4]}' access.log | sort | uniq -c | sort -rn &gt; ua.txt
+robotsmith advise --ua-counts ua.txt</code></pre>
+
+<h3>Exit codes</h3>
+<table>
+  <tbody>
+    <tr><td><code>0</code></td><td>everything as it should be</td></tr>
+    <tr><td><code>1</code></td><td>something is not</td></tr>
+    <tr><td><code>2</code></td><td>usage error</td></tr>
+    <tr><td><code>4</code></td><td>file unreachable</td></tr>
+  </tbody>
+</table>
+<p class="sub">They are a contract: in CI a <code>robots.txt</code> that loses rules or stays stuck
+in a cache becomes a red build instead of a late discovery. Telling <code>1</code> from
+<code>4</code> matters — "the file says the wrong thing" and "the file is not there" call for
+different actions.</p>
+
+<h2>⛔ What this tool does not do</h2>
+<ul>
+  <li><b>It does not tell you whether crawlers obey.</b> <code>robots.txt</code> is a request, not a
+  control. That is measured from the logs over the following days.</li>
+  <li><b>It does not stop whoever disguises itself as a browser.</b> By construction: there is no
+  token to write. That calls for a per-IP request cap or a WAF.</li>
+  <li><b>It does not look at the per-IP rate</b>, do fingerprinting, or verify reverse DNS.</li>
+  <li><b>It does not handle <code>Crawl-delay</code></b>: Google ignores it, and suggesting it would
+  give false confidence.</li>
+  <li><b>It has no server, daemon or database.</b> It is a command that reads, decides and
+  prints.</li>
+</ul>
+
+<h2>How it is built</h2>
+<div class="card">
+<p style="margin-top:0"><b>Everything is derived from a test.</b> Development is test-first: every
+behaviour change starts from a failing test, and every bug found gets a test before the fix. The
+suite runs with <code>-race</code> in CI along with <code>gofmt -l</code>, <code>go vet</code> and
+<code>go build</code>; no test touches the network (<code>httptest</code> only) or writes outside a
+temporary directory.</p>
+<p style="margin-bottom:0">The parser is kept separate from the policy on purpose: matching
+correctness is verifiable against the RFC, policy is an opinion. <code>internal/matcher</code> knows
+nothing about "good crawlers"; <code>internal/advise</code> does no I/O.</p>
+</div>
+
+<footer>
+  <p>MIT licensed · <a href="https://github.com/Allan-Nava/robotsmith">github.com/Allan-Nava/robotsmith</a></p>
+</footer>
+
+</div>
+</body>
+</html>

@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64"
+     role="img" aria-label="robotsmith">
+  <title>robotsmith</title>
+  <style>
+    /* Il segno si adatta al tema di chi lo guarda: la stessa immagine su README chiaro e scuro. */
+    .bg   { fill: #f4f1ec; }
+    .ink  { fill: #14161a; }
+    .fire { fill: #e2571f; }
+    .fs   { stroke: #e2571f; }
+    @media (prefers-color-scheme: dark) {
+      .bg  { fill: #14161a; }
+      .ink { fill: #f4f1ec; }
+    }
+  </style>
+  <rect class="bg" width="64" height="64" rx="14"/>
+  <!-- Testa del robot: è il pezzo sull'incudine, la cosa che si sta forgiando. -->
+  <rect class="ink" x="22" y="8" width="20" height="15" rx="4"/>
+  <rect class="ink" x="31" y="4" width="2" height="5" rx="1"/>
+  <circle class="ink" cx="32" cy="3.4" r="1.9"/>
+  <circle class="fire" cx="27.5" cy="15.5" r="2.1"/>
+  <circle class="fire" cx="36.5" cy="15.5" r="2.1"/>
+  <!-- Scintille: il pezzo è caldo, il file è appena stato battuto. -->
+  <g class="fs" stroke-width="2" stroke-linecap="round" fill="none">
+    <path d="M48 20.5l3.5-3"/>
+    <path d="M15 20.5l-3.5-3"/>
+  </g>
+  <!-- Incudine: piano, corno, vita, base. -->
+  <rect class="ink" x="8" y="27" width="40" height="8" rx="2"/>
+  <path class="ink" d="M48 27.6l9 3.4-9 3.4z"/>
+  <rect class="ink" x="24" y="35" width="12" height="8"/>
+  <rect class="ink" x="13" y="43" width="34" height="8" rx="2"/>
+  <rect class="ink" x="10" y="55" width="40" height="3" rx="1.5" opacity=".35"/>
+</svg>

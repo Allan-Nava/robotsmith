@@ -1,5 +1,5 @@
-// Package check verifica un robots.txt servito in rete: che ci sia, che sia FRESCO e che dica quello
-// che deve.
+// Package check verifies a robots.txt as it is actually served: that it exists, that it is FRESH,
+// and that it says what it should.
 package check
 
 import (
@@ -13,31 +13,32 @@ import (
 	"github.com/Allan-Nava/robotsmith/internal/matcher"
 )
 
-// Attesi sono i casi che un robots.txt sano deve superare: chi porta visite passa, chi prende senza
-// dare è bloccato. Sono la parte "policy" del check, separata dal parser di proposito.
+// The expected cases a healthy robots.txt must pass: whoever brings visits gets through, whoever
+// takes without giving is blocked. This is the "policy" half of the check, deliberately kept
+// separate from the parser.
 var (
-	DevonoPassare = []string{
+	MustPass = []string{
 		"Googlebot", "Google-InspectionTool", "Storebot-Google", "bingbot", "DuckDuckBot", "Applebot",
 		"facebookexternalhit", "Twitterbot", "LinkedInBot", "WhatsApp", "TelegramBot", "Slackbot",
 		"Discordbot", "Pinterest", "ChatGPT-User", "OAI-SearchBot",
 		"Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
 	}
-	DevonoEssereBloccati = []string{
+	MustBeBlocked = []string{
 		"YisouSpider", "GPTBot", "CCBot", "ClaudeBot", "anthropic-ai", "PerplexityBot", "Bytespider",
 		"Amazonbot", "meta-externalagent", "SemrushBot", "AhrefsBot", "MJ12bot", "DotBot", "BLEXBot",
 		"DataForSeoBot",
 	}
 )
 
-// Result è l'esito della verifica.
+// Result is the outcome of the verification.
 type Result struct {
 	URL      string
 	Body     string
 	Headers  http.Header
-	Problemi []string
-	Casi     int
-	Falliti  int
-	Deindex  bool // almeno un motore di ricerca è bloccato: è l'unico caso urgente
+	Problems []string
+	Cases    int
+	Failed   int
+	Deindex  bool // at least one search engine is blocked: the only urgent case
 }
 
 var client = &http.Client{Timeout: 20 * time.Second}
@@ -63,16 +64,16 @@ func fetch(u string) (string, http.Header, error) {
 	return string(b), resp.Header, nil
 }
 
-// Run scarica e verifica. Se `origin` è indicato, confronta il pubblico con l'origin: è l'unico modo
-// affidabile di capire se una CDN sta ancora servendo una versione vecchia.
+// Run downloads and verifies. If `origin` is given, it compares the public copy against the
+// origin: that is the only reliable way to tell whether a CDN is still serving an old version.
 //
-// ⚠️ Il trucco del cache-buster (`?cb=<timestamp>`) NON basta: se la query string non fa parte della
-// cache key — configurazione normale per un file statico — entrambe le fetch tornano la stessa copia
-// e il confronto dice "aggiornato" mentre la CDN serve il vecchio.
+// ⚠️ The cache-buster trick (`?cb=<timestamp>`) is NOT enough: if the query string is not part of
+// the cache key — the normal setup for a static file — both fetches return the same copy and the
+// comparison reports "up to date" while the CDN serves the old one.
 func Run(pubURL, originURL string, path string) (*Result, error) {
 	body, hdr, err := fetch(pubURL)
 	if err != nil {
-		return nil, fmt.Errorf("%s non raggiungibile: %w", pubURL, err)
+		return nil, fmt.Errorf("%s not reachable: %w", pubURL, err)
 	}
 	r := &Result{URL: pubURL, Body: body, Headers: hdr}
 
@@ -80,11 +81,11 @@ func Run(pubURL, originURL string, path string) (*Result, error) {
 		ob, _, oerr := fetch(originURL)
 		switch {
 		case oerr != nil:
-			r.Problemi = append(r.Problemi, fmt.Sprintf("origin non raggiungibile: %v", oerr))
+			r.Problems = append(r.Problems, fmt.Sprintf("origin not reachable: %v", oerr))
 		case strings.TrimSpace(ob) != strings.TrimSpace(body):
-			r.Problemi = append(r.Problemi, fmt.Sprintf(
-				"la CDN serve una versione DIVERSA dall'origin (%d byte contro %d): la modifica c'è "+
-					"sull'origin ma i crawler vedono ancora la vecchia. Serve invalidare %s",
+			r.Problems = append(r.Problems, fmt.Sprintf(
+				"the CDN serves a version DIFFERENT from the origin (%d bytes against %d): the change "+
+					"is on the origin but crawlers still see the old one. %s needs invalidating",
 				len(body), len(ob), path))
 		}
 	}
@@ -93,29 +94,29 @@ func Run(pubURL, originURL string, path string) (*Result, error) {
 	if path == "" {
 		path = "/"
 	}
-	for _, ua := range DevonoPassare {
-		r.Casi++
+	for _, ua := range MustPass {
+		r.Cases++
 		if !rt.Allowed(ua, path) {
-			r.Falliti++
-			msg := fmt.Sprintf("`%s` è BLOCCATO ma deve passare", ua)
-			if isMotore(ua) {
-				msg += " — ⛔ RISCHIO DEINDICIZZAZIONE"
+			r.Failed++
+			msg := fmt.Sprintf("`%s` is BLOCKED but must get through", ua)
+			if isSearchEngine(ua) {
+				msg += " — ⛔ DEINDEXING RISK"
 				r.Deindex = true
 			}
-			r.Problemi = append(r.Problemi, msg)
+			r.Problems = append(r.Problems, msg)
 		}
 	}
-	for _, ua := range DevonoEssereBloccati {
-		r.Casi++
+	for _, ua := range MustBeBlocked {
+		r.Cases++
 		if rt.Allowed(ua, path) {
-			r.Falliti++
-			r.Problemi = append(r.Problemi, fmt.Sprintf("`%s` passa ma dovrebbe essere bloccato", ua))
+			r.Failed++
+			r.Problems = append(r.Problems, fmt.Sprintf("`%s` gets through but should be blocked", ua))
 		}
 	}
 	return r, nil
 }
 
-func isMotore(ua string) bool {
+func isSearchEngine(ua string) bool {
 	l := strings.ToLower(ua)
 	for _, m := range []string{"googlebot", "bingbot", "google-", "storebot", "duckduck", "applebot"} {
 		if strings.Contains(l, m) {
@@ -125,7 +126,8 @@ func isMotore(ua string) bool {
 	return false
 }
 
-// RobotsURL normalizza un input tipo "esempio.it" o "https://esempio.it" in URL del robots.txt.
+// RobotsURL normalises an input like "example.com" or "https://example.com" into the URL of its
+// robots.txt.
 func RobotsURL(in string) (string, string, error) {
 	if !strings.Contains(in, "://") {
 		in = "https://" + in

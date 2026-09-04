@@ -1,18 +1,18 @@
-// Package advise contiene l'algoritmo che CONSIGLIA un robots.txt partendo dal traffico osservato.
+// Package advise holds the algorithm that ADVISES a robots.txt starting from observed traffic.
 //
-// L'idea di fondo: un robots.txt non si scrive a intuito, si ricava dai dati. Per ogni crawler che
-// arriva davvero sul sito ci si chiede una cosa sola — «questo traffico mi PORTA qualcosa?» — e la
-// risposta determina la policy:
+// The core idea: a robots.txt is not written on instinct, it is derived from data. For every
+// crawler that actually reaches the site there is a single question — «does this traffic BRING me
+// anything?» — and the answer determines the policy:
 //
-//	porta visite (motori, preview dei link)      → ALLOW, sempre. Bloccarli costa traffico reale.
-//	prende senza dare (scraper AI, tool SEO)     → BLOCK. È il caso in cui il file serve.
-//	è innescato da una persona (ChatGPT-User)    → ALLOW: bloccarlo toglie visibilità, non carico.
-//	non è indirizzabile (browser, app, monitor)  → IGNORA: il robots.txt non li riguarda.
-//	ignoto ma voluminoso                         → CANDIDATO, da decidere: "ignoto" non vuol dire
-//	                                               "inutile", e un blocco sbagliato non si vede.
+//	brings visits (search engines, link previews)    → ALLOW, always. Blocking them costs real traffic.
+//	takes without giving (AI scrapers, SEO tools)    → BLOCK. This is where the file earns its keep.
+//	triggered by a person (ChatGPT-User)             → ALLOW: blocking it costs visibility, not load.
+//	not addressable (browsers, apps, monitors)       → IGNORE: robots.txt does not concern them.
+//	unknown but high-volume                          → CANDIDATE, to be decided: "unknown" does not
+//	                                                   mean "useless", and a wrong block is invisible.
 //
-// L'ordine di convenienza fra i blocchi è dato dal VOLUME: bloccare un crawler che fa il 5% delle
-// richieste vale più che bloccarne dieci che fanno lo 0,1% ciascuno.
+// The order of the blocks is given by VOLUME: blocking one crawler worth 5% of the requests is
+// worth more than blocking ten worth 0.1% each.
 package advise
 
 import (
@@ -22,46 +22,46 @@ import (
 	"strings"
 )
 
-// Family è la classificazione di uno user-agent.
+// Family is the classification of a user-agent.
 type Family int
 
 const (
 	Unknown Family = iota
-	Search         // motori di ricerca: portano visite
-	Social         // preview dei link condivisi: portano visite
-	AIUser         // fetch innescate da una persona
-	AITrain        // scraper per addestramento
-	SEO            // tool di analisi per terzi
-	Tool           // monitoraggi, health-check, librerie HTTP, nostri servizi
-	App            // app mobile/TV
-	Browser        // navigatori
+	Search         // search engines: they bring visits
+	Social         // previews of shared links: they bring visits
+	AIUser         // fetches triggered by a person
+	AITrain        // scrapers collecting training data
+	SEO            // third-party analysis tools
+	Tool           // monitors, health checks, HTTP libraries, our own services
+	App            // mobile/TV apps
+	Browser        // browsers
 )
 
 func (f Family) String() string {
-	return [...]string{"ignoto", "motore", "social", "ai-utente", "ai-training", "seo", "tool", "app", "browser"}[f]
+	return [...]string{"unknown", "search", "social", "ai-user", "ai-training", "seo", "tool", "app", "browser"}[f]
 }
 
-// Policy è la decisione sul crawler.
+// Policy is the decision taken about a crawler.
 type Policy int
 
 const (
-	Allow     Policy = iota // da lasciare passare esplicitamente
-	Block                   // da bloccare
-	Candidate               // volume alto ma natura incerta: decide una persona
-	Ignore                  // il robots.txt non lo riguarda
+	Allow     Policy = iota // to be let through explicitly
+	Block                   // to be blocked
+	Candidate               // high volume but uncertain nature: a person decides
+	Ignore                  // robots.txt does not concern it
 )
 
-// regola di classificazione: il primo pattern che combacia vince, quindi l'ordine è significativo.
+// classification rule: the first matching pattern wins, so the order is significant.
 type rule struct {
 	re  *regexp.Regexp
 	fam Family
-	// name è il token da usare nel robots.txt (`User-agent: <name>`), quando serve.
+	// name is the token to use in the robots.txt (`User-agent: <name>`), where one is needed.
 	name string
 }
 
 var rules = []rule{
-	// ⚠️ Prima gli allowlist: "Googlebot" contiene "bot", quindi una regola generica su /bot/
-	// messa in testa li catturerebbe tutti.
+	// ⚠️ Allowlist first: "Googlebot" contains "bot", so a generic /bot/ rule placed at the top
+	// would capture every one of them.
 	{regexp.MustCompile(`googlebot`), Search, "Googlebot"},
 	{regexp.MustCompile(`google-inspectiontool`), Search, "Google-InspectionTool"},
 	{regexp.MustCompile(`storebot-google`), Search, "Storebot-Google"},
@@ -83,7 +83,7 @@ var rules = []rule{
 	{regexp.MustCompile(`pinterest`), Social, "Pinterest"},
 	{regexp.MustCompile(`redditbot`), Social, "redditbot"},
 	{regexp.MustCompile(`embedly|skypeuripreview`), Social, "Embedly"},
-	// AI innescata da un utente: PRIMA di quella di training, perché il loro UA contiene "openai".
+	// User-triggered AI: BEFORE the training one, because their UA contains "openai".
 	{regexp.MustCompile(`chatgpt-user`), AIUser, "ChatGPT-User"},
 	{regexp.MustCompile(`oai-searchbot`), AIUser, "OAI-SearchBot"},
 	{regexp.MustCompile(`gptbot`), AITrain, "GPTBot"},
@@ -102,18 +102,18 @@ var rules = []rule{
 	{regexp.MustCompile(`blexbot`), SEO, "BLEXBot"},
 	{regexp.MustCompile(`dataforseo`), SEO, "DataForSeoBot"},
 	{regexp.MustCompile(`majestic|screaming|sistrix|serpstat|barkrowler`), SEO, "MajesticSEO"},
-	// Non indirizzabili dal robots.txt.
+	// Not addressable through robots.txt.
 	{regexp.MustCompile(`^node$|listmonk|kener|compress-bot|go-http|python|curl|wget|okhttp|` +
 		`java/|health-?check|route53|prometheus|blackbox|zabbix|uptime-kuma|axios|deno/|supabase|` +
 		`nagios|checkly|pingdom|uptimerobot`), Tool, ""},
 	{regexp.MustCompile(`cfnetwork|darwin/|dalvik|exoplayer|networkingextension|roku|tizen|webos|` +
 		`smart-?tv|appletv|tvos|crkey|firetv`), App, ""},
-	// Ultima risorsa: chi si dichiara crawler senza essere fra i noti.
+	// Last resort: whoever declares itself a crawler without being one of the known ones.
 	{regexp.MustCompile(`bot|spider|crawl|slurp|scan|fetch`), Unknown, ""},
 	{regexp.MustCompile(`mozilla`), Browser, ""},
 }
 
-// Classify assegna una famiglia e, dove serve, il token da scrivere nel file.
+// Classify assigns a family and, where needed, the token to write in the file.
 func Classify(ua string) (Family, string) {
 	l := strings.ToLower(ua)
 	for _, r := range rules {
@@ -128,8 +128,8 @@ func Classify(ua string) (Family, string) {
 	return Browser, ""
 }
 
-// firstToken estrae il nome del crawler da uno UA ignoto (`YisouSpider` da
-// "Mozilla/5.0 (compatible; YisouSpider/5.0; ...)"): serve per poterlo scrivere nel robots.txt.
+// firstToken extracts the crawler name out of an unknown UA (`YisouSpider` from
+// "Mozilla/5.0 (compatible; YisouSpider/5.0; ...)"): it is what makes it writable in the file.
 func firstToken(ua string) string {
 	f := strings.FieldsFunc(ua, func(r rune) bool {
 		return r == ' ' || r == ';' || r == '(' || r == ')' || r == '/' || r == ','
@@ -139,9 +139,9 @@ func firstToken(ua string) string {
 		if !strings.Contains(lt, "bot") && !strings.Contains(lt, "spider") && !strings.Contains(lt, "crawl") {
 			continue
 		}
-		// ⚠️ Scartare le parole GENERICHE: da "... crawler ..." si ricaverebbe il token `crawler`,
-		// che nel robots.txt non corrisponde a nessun crawler reale e darebbe una riga inutile.
-		if generici[lt] || strings.HasPrefix(lt, "mozilla") {
+		// ⚠️ Discard the GENERIC words: from "... crawler ..." we would derive the token `crawler`,
+		// which matches no real crawler in a robots.txt and would produce a useless line.
+		if generic[lt] || strings.HasPrefix(lt, "mozilla") {
 			continue
 		}
 		return t
@@ -149,43 +149,43 @@ func firstToken(ua string) string {
 	return ""
 }
 
-var generici = map[string]bool{
+var generic = map[string]bool{
 	"bot": true, "bots": true, "spider": true, "crawler": true, "crawl": true, "compatible": true,
 	"robot": true, "webcrawler": true, "crawler.php": true,
 }
 
-// Observation è un crawler visto nei log, con quanto pesa.
+// Observation is one crawler seen in the logs, with how much it weighs.
 type Observation struct {
 	UA       string
 	Requests int64
 }
 
-// Decision è la raccomandazione per un singolo crawler.
+// Decision is the recommendation for a single crawler.
 type Decision struct {
 	Name     string
 	UA       string
 	Family   Family
 	Policy   Policy
 	Requests int64
-	Share    float64 // quota sul totale osservato, in percentuale
+	Share    float64 // share of the observed total, as a percentage
 	Why      string
 }
 
-// Advice è il risultato completo dell'algoritmo.
+// Advice is the full result of the algorithm.
 type Advice struct {
 	Decisions []Decision
-	// Saving è la quota di richieste che i blocchi consigliati toccherebbero.
+	// Saving is the share of requests the advised blocks would touch.
 	Saving float64
-	// Warnings sono i casi che il robots.txt NON può risolvere.
+	// Warnings are the cases robots.txt CANNOT solve.
 	Warnings []string
 	Total    int64
 }
 
-// MinCandidateShare è la quota sotto la quale un crawler ignoto non vale una riga nel file:
-// bloccare qualcosa che fa lo 0,1% aggiunge manutenzione senza togliere carico.
+// MinCandidateShare is the share below which an unknown crawler is not worth a line in the file:
+// blocking something worth 0.1% adds maintenance without removing load.
 const MinCandidateShare = 0.5
 
-// Analyze applica l'algoritmo alle osservazioni.
+// Analyze applies the algorithm to the observations.
 func Analyze(obs []Observation) *Advice {
 	a := &Advice{}
 	agg := map[string]*Decision{}
@@ -195,22 +195,22 @@ func Analyze(obs []Observation) *Advice {
 	if a.Total == 0 {
 		return a
 	}
-	// quota totale di traffico che dichiara uno UA da browser: serve solo a dire quanta parte del
-	// traffico questo comando NON può giudicare (vedi il warning finale)
-	var quotaBrowser float64
+	// total share of traffic declaring a browser UA: used only to say how much of the traffic this
+	// command CANNOT judge (see the closing warning)
+	var browserShare float64
 
 	for _, o := range obs {
 		fam, name := Classify(o.UA)
 		share := float64(o.Requests) / float64(a.Total) * 100
 		if fam == Browser {
-			quotaBrowser += share
+			browserShare += share
 		}
 		pol, why := policyFor(fam, share)
 		if pol == Ignore {
 			continue
 		}
 		if name == "" {
-			continue // non sapremmo cosa scrivere nel file
+			continue // we would not know what to write in the file
 		}
 		key := strings.ToLower(name)
 		if d, ok := agg[key]; ok {
@@ -226,22 +226,23 @@ func Analyze(obs []Observation) *Advice {
 		}
 		a.Decisions = append(a.Decisions, *d)
 	}
-	// ordine: prima le decisioni che pesano più, così l'ordine di convenienza è leggibile
+	// order: heaviest decisions first, so the order of convenience is readable
 	sort.Slice(a.Decisions, func(i, j int) bool {
 		if a.Decisions[i].Policy != a.Decisions[j].Policy {
 			return a.Decisions[i].Policy < a.Decisions[j].Policy
 		}
 		return a.Decisions[i].Requests > a.Decisions[j].Requests
 	})
-	// ⚠️ Un avviso onesto, non un'accusa: uno UA da browser con quota alta è NORMALE (dietro una
-	// stringa ci sono migliaia di persone). Il punto è che gli scraper travestiti si nascondono
-	// proprio lì, e per distinguerli serve il TASSO PER IP — che questo comando non guarda.
-	if quotaBrowser > 0 {
+	// ⚠️ An honest warning, not an accusation: a browser UA with a high share is NORMAL (behind one
+	// string there are thousands of people). The point is that disguised scrapers hide exactly
+	// there, and telling them apart needs the PER-IP RATE — which this command does not look at.
+	if browserShare > 0 {
 		a.Warnings = append(a.Warnings, fmt.Sprintf(
-			"il %.1f%% del traffico dichiara uno User-Agent da browser: questo comando non può dire "+
-				"se dietro ci siano persone o scraper travestiti, perché non guarda il tasso per IP. "+
-				"Gli scraper che mentono sullo UA non compaiono in questa lista per definizione, e il "+
-				"robots.txt non li ferma: servono un tetto di richieste o un WAF", quotaBrowser))
+			"%.1f%% of the traffic declares a browser User-Agent: this command cannot tell whether "+
+				"there are people or disguised scrapers behind it, because it does not look at the "+
+				"per-IP rate. Scrapers that lie about their UA do not show up in this list by "+
+				"definition, and robots.txt does not stop them: that needs a request cap or a WAF",
+			browserShare))
 	}
 	return a
 }
@@ -249,28 +250,21 @@ func Analyze(obs []Observation) *Advice {
 func policyFor(fam Family, share float64) (Policy, string) {
 	switch fam {
 	case Search:
-		return Allow, "porta visite: bloccarlo costa traffico reale"
+		return Allow, "brings visits: blocking it costs real traffic"
 	case Social:
-		return Allow, "preview dei link condivisi: porta visite"
+		return Allow, "previews of shared links: it brings visits"
 	case AIUser:
-		return Allow, "fetch innescata da una persona: bloccarla toglie visibilità, non carico"
+		return Allow, "fetch triggered by a person: blocking it costs visibility, not load"
 	case AITrain:
-		return Block, "prende contenuti per addestramento senza portare visite"
+		return Block, "takes content for training without bringing visits"
 	case SEO:
-		return Block, "analizza il sito per conto di terzi"
+		return Block, "analyses the site on behalf of third parties"
 	case Unknown:
 		if share >= MinCandidateShare {
-			return Candidate, fmt.Sprintf("crawler non riconosciuto ma pesante (%.1f%%): da valutare", share)
+			return Candidate, fmt.Sprintf("unrecognised but heavy crawler (%.1f%%): to be reviewed", share)
 		}
 		return Ignore, ""
 	default:
 		return Ignore, ""
 	}
-}
-
-func short(s string) string {
-	if len(s) > 42 {
-		return s[:42] + "…"
-	}
-	return s
 }

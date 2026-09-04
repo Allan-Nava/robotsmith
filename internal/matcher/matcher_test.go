@@ -2,76 +2,75 @@ package matcher
 
 import "testing"
 
-func TestCorrispondenzaPiuLunga(t *testing.T) {
-	// Il caso che distingue la RFC da un parser a prima-corrispondenza: con `Allow: /` in testa,
-	// un parser semplificato lascia passare /login. La RFC no, perché /login è più specifico.
+func TestLongestMatchWins(t *testing.T) {
+	// The case that separates the RFC from a first-match parser: with `Allow: /` first, a
+	// simplified parser lets /login through. The RFC does not, because /login is more specific.
 	r := Parse("User-agent: *\nAllow: /\nDisallow: /login\n")
 	if r.Allowed("Googlebot", "/login") {
-		t.Error("/login deve essere bloccato: `Disallow: /login` è più lungo di `Allow: /`")
+		t.Error("/login must be disallowed: `Disallow: /login` is longer than `Allow: /`")
 	}
 	if !r.Allowed("Googlebot", "/") {
-		t.Error("/ deve passare")
+		t.Error("/ must be allowed")
 	}
 }
 
-func TestGruppoPiuSpecifico(t *testing.T) {
+func TestMostSpecificGroupApplies(t *testing.T) {
 	body := "User-agent: *\nDisallow: /\n\nUser-agent: Googlebot\nAllow: /\n"
 	r := Parse(body)
-	if !r.Allowed("Googlebot/2.1", "/qualsiasi") {
-		t.Error("Googlebot ha un gruppo suo: deve passare, non ereditare il Disallow di *")
+	if !r.Allowed("Googlebot/2.1", "/anything") {
+		t.Error("Googlebot has its own group: it must pass, not inherit the * Disallow")
 	}
-	if r.Allowed("PincoBot", "/qualsiasi") {
-		t.Error("un UA senza gruppo proprio ricade su * e deve essere bloccato")
+	if r.Allowed("SomeBot", "/anything") {
+		t.Error("a UA without its own group falls back to * and must be disallowed")
 	}
 }
 
-func TestRegoleOrfaneDopoRigaVuota(t *testing.T) {
-	// Il difetto trovato su www.streamwayplus.com: la riga vuota chiude il gruppo e le direttive
-	// successive restano senza user-agent.
+func TestOrphanRulesAfterBlankLine(t *testing.T) {
+	// The blank line closes the group and the directives after it are left without a user-agent.
 	r := Parse("User-agent: *\n\nDisallow: /login\n")
 	if len(r.Orphans) != 1 {
-		t.Fatalf("attesa 1 regola orfana, trovate %d", len(r.Orphans))
+		t.Fatalf("expected 1 orphan rule, found %d", len(r.Orphans))
 	}
 	if !r.Allowed("Googlebot", "/login") {
-		t.Error("una regola orfana non si applica: il tool la segnala, non la applica")
+		t.Error("an orphan rule does not apply: the tool reports it, it does not apply it")
 	}
 }
 
-func TestCommentiNonChiudonoIlGruppo(t *testing.T) {
-	r := Parse("User-agent: *\n# commento\nDisallow: /login\n")
+func TestCommentsDoNotCloseTheGroup(t *testing.T) {
+	r := Parse("User-agent: *\n# a comment\nDisallow: /login\n")
 	if len(r.Orphans) != 0 {
-		t.Error("un commento non deve chiudere il gruppo")
+		t.Error("a comment must not close the group")
 	}
 	if r.Allowed("Googlebot", "/login") {
-		t.Error("/login deve restare bloccato")
+		t.Error("/login must stay disallowed")
 	}
 }
 
-func TestJolly(t *testing.T) {
+func TestWildcards(t *testing.T) {
 	r := Parse("User-agent: *\nDisallow: /*.pdf$\nDisallow: /priv*/tmp\n")
-	casi := map[string]bool{
-		"/doc/a.pdf":     false, // combacia /*.pdf$
-		"/doc/a.pdf?x=1": true,  // `$` ancora alla fine: la query string non combacia
-		"/private/tmp":   false, // combacia /priv*/tmp
+	cases := map[string]bool{
+		"/doc/a.pdf":     false, // matches /*.pdf$
+		"/doc/a.pdf?x=1": true,  // `$` anchors the end: the query string does not match
+		"/private/tmp":   false, // matches /priv*/tmp
 		"/public/tmp":    true,
 	}
-	for path, atteso := range casi {
-		if got := r.Allowed("Googlebot", path); got != atteso {
-			t.Errorf("%s: atteso allowed=%v, ottenuto %v", path, atteso, got)
+	for path, want := range cases {
+		if got := r.Allowed("Googlebot", path); got != want {
+			t.Errorf("%s: expected allowed=%v, got %v", path, want, got)
 		}
 	}
 }
 
-func TestDisallowVuotoNonBlocca(t *testing.T) {
+func TestEmptyDisallowForbidsNothing(t *testing.T) {
 	r := Parse("User-agent: *\nDisallow:\n")
 	if !r.Allowed("Googlebot", "/x") {
-		t.Error("`Disallow:` senza valore significa nessun divieto")
+		t.Error("`Disallow:` with no value means no prohibition")
 	}
 }
 
-func TestFileVuotoPermetteTutto(t *testing.T) {
+func TestEmptyFileAllowsEverything(t *testing.T) {
 	r := Parse("")
 	if !r.Allowed("YisouSpider", "/") {
-		t.Error("un file vuoto (200 con 0 byte) equivale a tutto permesso")
+		t.Error("an empty file (200 with 0 bytes) means everything is allowed")
 	}
 }

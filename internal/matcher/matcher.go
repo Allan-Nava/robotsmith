@@ -1,61 +1,61 @@
-// Package matcher implementa la valutazione di un robots.txt secondo la RFC 9309.
+// Package matcher implements robots.txt evaluation per RFC 9309.
 //
-// Perché non riusare una libreria: le implementazioni "storiche" (compresa quella della stdlib di
-// Python) applicano la PRIMA regola che combacia. La RFC 9309 — e Google — usano invece la
-// corrispondenza PIÙ LUNGA, con l'Allow che vince a pari lunghezza. La differenza non è teorica:
+// Why not reuse a library: the "historical" implementations (including Python's own stdlib
+// robotparser) apply the FIRST matching rule. RFC 9309 — and Google — use the LONGEST match
+// instead, with Allow winning ties. The difference is not academic:
 //
 //	User-agent: *
 //	Allow: /
 //	Disallow: /login
 //
-// con la prima-corrispondenza `/login` risulta PERMESSO (vince `Allow: /`), con la RFC risulta
-// BLOCCATO (`/login` è più lungo di `/`). Un tool che consiglia cosa scrivere deve modellare il
-// comportamento reale dei crawler, non quello di un parser semplificato.
+// With first-match, `/login` comes out ALLOWED (`Allow: /` wins); with the RFC it comes out
+// DISALLOWED (`/login` is longer than `/`). A tool that advises what to write must model how real
+// crawlers behave, not how a simplified parser does.
 package matcher
 
 import (
 	"strings"
 )
 
-// Rule è una direttiva Allow/Disallow con il suo path pattern.
+// Rule is an Allow/Disallow directive with its path pattern.
 type Rule struct {
 	Allow   bool
 	Pattern string
 	Line    int
 }
 
-// Group è un record del file: uno o più user-agent con le loro regole.
+// Group is one record of the file: one or more user-agents with their rules.
 type Group struct {
 	Agents []string
 	Rules  []Rule
-	// StartLine è la riga del primo `User-agent:` del gruppo (per i messaggi diagnostici).
+	// StartLine is the line of the group's first `User-agent:` (used in diagnostics).
 	StartLine int
 }
 
-// RobotsTxt è un file parsato.
+// RobotsTxt is a parsed file.
 type RobotsTxt struct {
 	Groups   []Group
 	Sitemaps []string
-	// Orphans sono le regole trovate FUORI da ogni gruppo: succede quando una riga vuota chiude il
-	// record e le direttive successive restano senza `User-agent:`. Un parser stretto le ignora,
-	// Google le tollera: il tool le segnala invece di scegliere per conto proprio.
+	// Orphans are rules found OUTSIDE any group: this happens when a blank line closes the record
+	// and the following directives are left without a `User-agent:`. A strict parser ignores them,
+	// Google tolerates them: the tool reports them instead of deciding on its own.
 	Orphans []Rule
 }
 
-// Parse legge un robots.txt. Volutamente tollerante come i crawler reali: ignora righe non
-// riconosciute e non si ferma al primo errore.
+// Parse reads a robots.txt. Deliberately lenient, like real crawlers: it skips lines it does not
+// recognise and never stops at the first error.
 func Parse(body string) *RobotsTxt {
 	r := &RobotsTxt{}
 	var cur *Group
-	// inGroup dice se stiamo raccogliendo regole per un gruppo aperto. Una riga vuota lo chiude:
-	// è il punto in cui nascono le regole orfane.
+	// inGroup says whether we are collecting rules for an open group. A blank line closes it:
+	// that is where orphan rules come from.
 	inGroup := false
 
 	for i, raw := range strings.Split(body, "\n") {
 		line := strings.TrimSpace(raw)
-		// ⚠️ L'ordine conta: una riga di solo COMMENTO non chiude il gruppo, una riga VUOTA sì.
-		// Togliendo prima il commento le due diventerebbero indistinguibili (bug preso dal test
-		// TestCommentiNonChiudonoIlGruppo).
+		// ⚠️ Order matters: a COMMENT-only line does not close the group, a BLANK line does.
+		// Stripping the comment first would make the two indistinguishable (bug caught by the test
+		// TestCommentsDoNotCloseTheGroup).
 		if line == "" {
 			inGroup = false
 			continue
@@ -64,7 +64,7 @@ func Parse(body string) *RobotsTxt {
 			line = strings.TrimSpace(line[:idx])
 		}
 		if line == "" {
-			continue // era solo un commento: il gruppo resta aperto
+			continue // it was only a comment: the group stays open
 		}
 		key, val, ok := split(line)
 		if !ok {
@@ -80,7 +80,7 @@ func Parse(body string) *RobotsTxt {
 			cur.Agents = append(cur.Agents, strings.ToLower(val))
 		case "allow", "disallow":
 			rule := Rule{Allow: key == "allow", Pattern: val, Line: i + 1}
-			if inGroup && cur != nil && len(cur.Rules) >= 0 && len(cur.Agents) > 0 {
+			if inGroup && cur != nil && len(cur.Agents) > 0 {
 				cur.Rules = append(cur.Rules, rule)
 			} else {
 				r.Orphans = append(r.Orphans, rule)
@@ -100,9 +100,9 @@ func split(line string) (key, val string, ok bool) {
 	return strings.ToLower(strings.TrimSpace(line[:i])), strings.TrimSpace(line[i+1:]), true
 }
 
-// groupFor sceglie il gruppo applicabile a uno user-agent: quello con il token più SPECIFICO
-// (match più lungo, case-insensitive, su sottostringa come fanno i crawler), con `*` come ultima
-// risorsa. È la regola della RFC: un solo gruppo si applica, non l'unione di tutti.
+// groupFor picks the group that applies to a user-agent: the one with the most SPECIFIC token
+// (longest match, case-insensitive, on a substring as crawlers do), with `*` as the last resort.
+// That is the RFC rule: exactly one group applies, not the union of all of them.
 func (r *RobotsTxt) groupFor(ua string) *Group {
 	ua = strings.ToLower(ua)
 	var best *Group
@@ -127,8 +127,8 @@ func (r *RobotsTxt) groupFor(ua string) *Group {
 	return star
 }
 
-// Allowed dice se `path` è consentito a `ua`. Corrispondenza più lunga; a pari lunghezza vince
-// Allow (RFC 9309 § 2.2.2). Nessuna regola applicabile ⇒ permesso.
+// Allowed reports whether `path` is allowed for `ua`. Longest match wins; on equal length Allow
+// wins (RFC 9309 § 2.2.2). No applicable rule ⇒ allowed.
 func (r *RobotsTxt) Allowed(ua, path string) bool {
 	g := r.groupFor(ua)
 	if g == nil {
@@ -137,7 +137,7 @@ func (r *RobotsTxt) Allowed(ua, path string) bool {
 	bestLen, allow := -1, true
 	for _, rule := range g.Rules {
 		if rule.Pattern == "" {
-			continue // `Disallow:` vuoto significa "nessun divieto"
+			continue // an empty `Disallow:` means "nothing is forbidden"
 		}
 		if !match(rule.Pattern, path) {
 			continue
@@ -150,12 +150,12 @@ func (r *RobotsTxt) Allowed(ua, path string) bool {
 	return allow
 }
 
-// effLen è la lunghezza "utile" del pattern per il confronto di specificità: i jolly non contano.
+// effLen is the "useful" length of a pattern when comparing specificity: wildcards do not count.
 func effLen(p string) int {
 	return len(strings.NewReplacer("*", "", "$", "").Replace(p))
 }
 
-// match applica il pattern con i jolly della RFC: `*` = qualsiasi sequenza, `$` = fine del path.
+// match applies the pattern with the RFC wildcards: `*` = any sequence, `$` = end of path.
 func match(pattern, path string) bool {
 	anchored := strings.HasSuffix(pattern, "$")
 	if anchored {
@@ -181,7 +181,7 @@ func match(pattern, path string) bool {
 		pos += k + len(part)
 	}
 	if anchored {
-		// con `$` l'ultimo pezzo deve arrivare in fondo
+		// with `$` the last chunk must reach the end of the path
 		if len(parts) > 0 && parts[len(parts)-1] != "" {
 			return pos == len(path)
 		}

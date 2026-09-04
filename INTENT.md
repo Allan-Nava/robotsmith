@@ -1,0 +1,135 @@
+# INTENT.md — why robotsmith exists, and why it is built this way
+
+This file is the memory of the decisions. The README says **what** the tool does, CLAUDE.md **how**
+to work on it; here is the **why**. It exists so old debates are not re-run and so nobody
+"simplifies" something that is complicated for a reason.
+
+## The starting problem
+
+On a real site, some crawlers were taking about **5% of the requests without bringing a single
+visit**. The operational question was one: *what do I put in `robots.txt`?* — and it had no
+data-backed answer. The user-agent lists you find online are generic; a site's traffic is specific.
+A copied list blocks crawlers that site has never seen and ignores the one costing it 6% of its
+bandwidth.
+
+Hence the three commands, which answer three different questions:
+
+| Command | Question |
+|---|---|
+| `advise` | what **should** I write, given my logs? |
+| `lint` | does the file I wrote say what I think it says? |
+| `check` | is the file crawlers **actually see** the one I wrote? |
+
+## The asymmetry that governs everything
+
+The risk is not symmetric, and that determines nearly every choice in the tool:
+
+- accidentally blocking a scraper → **no visible effect**;
+- accidentally blocking Googlebot → the site drops out of the index within weeks, and **you notice
+  once the traffic is already gone**.
+
+Concrete consequences in the code:
+
+- the search-engine allowlist is **explicit** in the generated file, even though it is technically
+  unnecessary (whatever is not forbidden is already allowed): it makes it obvious to the reader that
+  those crawlers are wanted, and it prevents the "block everything except two" that ends in
+  deindexing;
+- `check` has a dedicated flag (`Deindex`) and an all-caps message for the one urgent case;
+- an **unknown** crawler is not blocked by default: below a volume threshold it comes out
+  **commented**.
+
+## The non-obvious decisions
+
+### An in-house parser instead of a library
+The historical implementations (including Python's stdlib `urllib.robotparser`) apply the **first**
+matching rule. RFC 9309 and Google use the **longest** match, with `Allow` winning ties. On
+
+```
+User-agent: *
+Allow: /
+Disallow: /login
+```
+
+first-match says `/login` is **allowed**, the RFC says **disallowed**. A tool that advises what to
+write must model how real crawlers behave. `lint` still flags that layout, because not every crawler
+is compliant: the file has to be correct under **both** parsers.
+
+### `ChatGPT-User` and `OAI-SearchBot` are ALLOW
+The name says "AI" and instinct says block. But the first is a fetch **triggered by a person** who
+is looking at that page, and the second feeds search results. Blocking them costs visibility
+**without removing load**: the worst trade there is. The question the tool asks is not "is this AI?"
+but **"does this traffic bring me anything?"**.
+
+### `Google-Extended` and `Applebot-Extended` are not user-agents
+They exist **only** as `robots.txt` tokens (they mean «do not use my content for training»). They
+never appear in logs and a UA rule looking for them does nothing. That is why the tool **emits**
+them into the file instead of hunting for them among the observations.
+
+### The double threshold on unknown crawlers
+Two constants, two different reasons:
+
+- `MinCandidateShare` = **0.5%** — below this share an unknown crawler is not even worth a line: it
+  adds maintenance without removing load.
+- `AutoBlockShare` = **3%** — above this share the line is written **active**, with the number next
+  to it. This is the burden of proof flipping: below 3% whoever blocks has to justify it (a wrong
+  block is invisible), above 3% the cost is such that whoever does *not* block has to justify it.
+
+### Pre-existing rules are carried over unchanged
+They were written for that site by a person who knew something the algorithm does not (admin areas,
+login flows, paths that generate load). The worst damage this tool can do is **lose one of them**.
+**Orphaned** rules — the ones left after a blank line inside a group, which a strict parser ignored
+— are **recovered** and flagged: they were probably intended and simply not working.
+
+### `--origin` instead of a cache-buster
+To find out whether a CDN still serves an old version, the instinctive move is `?cb=<timestamp>`. It
+does not work: if the query string is not part of the cache key — the **normal** setup for a static
+file — both fetches return the same copy, and the comparison says "up to date" while crawlers see
+the old one. The only reliable comparison is **public against origin**.
+
+### The closing warning accuses nobody
+A browser user-agent with a high share is **normal**: behind one string there are thousands of
+people. The tool only says that on that slice it **cannot reach a verdict**, because telling a
+person from a disguised scraper needs the **per-IP rate**, which `advise` does not look at. Stating
+a limit is information; insinuating a suspicion is not.
+
+### Zero dependencies
+The tool is meant to run inside a CI pipeline. Every extra library is attack and maintenance surface
+on a binary whose whole job is reading text and making two GET requests.
+
+### Exit codes as a contract
+`0` everything as it should be · `1` something is not · `2` usage error · `4` file unreachable.
+Telling `1` from `4` matters: "the file says the wrong thing" and "the file is not there" call for
+different actions, and in CI the difference between a failing test and downed infrastructure must
+not be lost.
+
+### English everywhere
+The first version was written in Italian (code, comments, output). It was made English on
+2026-09-04: the audience for a robots.txt tool is international, and a mixed-language repository —
+Italian identifiers with English Go APIs — costs a translation step to every reader and every
+contributor. One language, all the way through: code, comments, CLI output, documentation.
+
+## Non-goals
+
+Stated, not forgotten:
+
+- **It does not tell you whether crawlers obey.** `robots.txt` is a request, not a control. That is
+  measured from the logs over the following days.
+- **It does not stop whoever disguises itself as a browser.** By construction: there is no token to
+  write. That calls for a per-IP request cap or a WAF.
+- **It does not look at the per-IP rate.** That would be another tool, with different inputs.
+- **It does no fingerprinting** and does not verify the reverse DNS of declared UAs.
+- **It does not handle `Crawl-delay`**: Google ignores it, and suggesting it would give false
+  confidence.
+- **It has no server, daemon or database.** It is a command that reads, decides and prints.
+
+## Log
+
+- **2026-09-04** — first version: `check`, `lint`, `advise`, in-house RFC 9309 parser.
+- **2026-09-04** — tests added for `internal/check` (with `httptest`, no network) and for log/count
+  parsing in `main`; plus a test asserting the generator never emits a file its own linter would
+  reject. Documentation: `CLAUDE.md`, `AGENTS.md`, this file, the logo and the GitHub Pages site.
+- **2026-09-04** — whole repository translated to English (identifiers, comments, CLI output,
+  documentation). Rationale above under *English everywhere*.
+
+When you make a decision someone might want to reverse, add it here with the date and the reason.
+One line is enough.

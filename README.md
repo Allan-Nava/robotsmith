@@ -1,108 +1,125 @@
+<p align="center">
+  <picture>
+    <source srcset="docs/logo-dark.svg" media="(prefers-color-scheme: dark)">
+    <img src="docs/logo.svg" alt="robotsmith" width="300">
+  </picture>
+</p>
+
+<p align="center">
+  <a href="https://github.com/Allan-Nava/robotsmith/actions/workflows/ci.yml"><img src="https://github.com/Allan-Nava/robotsmith/actions/workflows/ci.yml/badge.svg" alt="ci"></a>
+  <a href="https://allan-nava.github.io/robotsmith/"><img src="https://img.shields.io/badge/docs-github%20pages-14161a" alt="docs"></a>
+  <img src="https://img.shields.io/badge/go-1.24-00ADD8" alt="go 1.24">
+  <img src="https://img.shields.io/badge/dependencies-none-2ea043" alt="no dependencies">
+</p>
+
 # robotsmith
 
-Verifica un `robots.txt` — e **consiglia come scriverlo** partendo dal traffico che il sito riceve
-davvero.
+Verifies a `robots.txt` — and **advises how to write it** starting from the traffic the site
+actually receives.
 
-Nasce da un problema concreto: dei crawler stavano prendendo il 5% delle richieste di un sito senza
-portare una visita, e la domanda «cosa metto nel robots.txt?» non aveva una risposta basata sui dati.
-Le liste che si trovano in rete sono generiche; il traffico di un sito è specifico.
+It comes out of a concrete problem: some crawlers were taking 5% of a site's requests without
+bringing a single visit, and the question «what do I put in robots.txt?» had no data-backed answer.
+The lists you find online are generic; a site's traffic is specific.
 
 ```
-robotsmith check   esempio.it [--origin https://origin.interno/robots.txt]
+robotsmith check   example.com [--origin https://internal.origin/robots.txt]
 robotsmith lint    ./robots.txt
-robotsmith advise  --log access.log --current https://esempio.it/robots.txt --host esempio.it
+robotsmith advise  --log access.log --current https://example.com/robots.txt --host example.com
 ```
 
-## Perché non basta scrivere quattro righe a mano
+📖 Full documentation: **https://allan-nava.github.io/robotsmith/** ·
+🧭 Design rationale: [INTENT.md](INTENT.md) · 🛠️ Contributing: [CLAUDE.md](CLAUDE.md) ·
+🤖 Coding agents: [AGENTS.md](AGENTS.md)
 
-Il rischio è **asimmetrico**. Bloccare uno scraper non produce nessun effetto visibile; bloccare per
-sbaglio Googlebot fa uscire il sito dall'indice in poche settimane — e te ne accorgi quando il
-traffico è già sparito. Un `robots.txt` va quindi verificato, e il file può essere **giusto e
-comunque non funzionare**:
+## Why writing four lines by hand is not enough
 
-| Trappola | Cosa succede |
+The risk is **asymmetric**. Blocking a scraper produces no visible effect; accidentally blocking
+Googlebot drops the site out of the index within weeks — and you notice once the traffic is already
+gone. So a `robots.txt` has to be verified, and the file can be **right and still not work**:
+
+| Pitfall | What happens |
 |---|---|
-| File servito **200 con 0 byte** | non è «tutto vietato», è **tutto permesso** |
-| Una **riga vuota** dentro un gruppo | chiude il record: tutte le regole dopo restano orfane e un parser stretto le ignora |
-| `Allow: /` **prima** dei `Disallow` | con un parser a prima-corrispondenza annulla tutti i divieti |
-| Modifica in **cache** sulla CDN | il file è corretto sull'origin e i crawler vedono ancora il vecchio |
-| `Sitemap:` di un **altro host** | una sitemap cross-domain non viene considerata |
+| File served **200 with 0 bytes** | that is not «everything forbidden», it is **everything allowed** |
+| A **blank line** inside a group | it closes the record: every rule after it is orphaned and a strict parser ignores it |
+| `Allow: /` **before** the `Disallow` rules | with a first-match parser it voids every prohibition |
+| Change stuck in the **CDN cache** | the file is correct on the origin and crawlers still see the old one |
+| `Sitemap:` on **another host** | a cross-domain sitemap is not considered |
 
-⚠️ Il **cache-buster non serve** a scoprire l'ultima: se la query string non fa parte della cache key
-— configurazione normale per un file statico — anche `?cb=123` torna la copia vecchia. L'unico
-confronto affidabile è **pubblico contro origin**, ed è cosa fa `--origin`.
+⚠️ A **cache-buster does not help** you find that last one: if the query string is not part of the
+cache key — the normal setup for a static file — even `?cb=123` returns the old copy. The only
+reliable comparison is **public against origin**, which is what `--origin` does.
 
-## L'algoritmo che consiglia il file
+## The algorithm that advises the file
 
-`advise` non applica una lista preconfezionata: legge il traffico e decide caso per caso. Per ogni
-crawler osservato si fa **una** domanda — *questo traffico mi porta qualcosa?* — e la risposta
-determina la policy.
+`advise` does not apply a canned list: it reads the traffic and decides case by case. For every
+observed crawler it asks **one** question — *does this traffic bring me anything?* — and the answer
+determines the policy.
 
 ```
-   log / conteggi UA
+   log / UA counts
           │
           ▼
-   ① CLASSIFICA          tabella ordinata di pattern → famiglia
-          │              ⚠️ l'ordine conta: "Googlebot" contiene "bot"
+   ① CLASSIFY            ordered table of pattern → family
+          │              ⚠️ order matters: "Googlebot" contains "bot"
           ▼
-   ② APPLICA LA POLICY   per famiglia:
-          │                motori, social      → ALLOW  (portano visite)
-          │                ai-utente           → ALLOW  (fetch innescata da una persona)
-          │                ai-training, seo    → BLOCK  (prendono senza dare)
-          │                tool, app, browser  → IGNORA (il robots.txt non li riguarda)
-          │                ignoto + voluminoso → VALUTA (decide una persona)
+   ② APPLY THE POLICY    per family:
+          │                search, social      → ALLOW  (they bring visits)
+          │                ai-user             → ALLOW  (fetch triggered by a person)
+          │                ai-training, seo    → BLOCK  (they take without giving)
+          │                tool, app, browser  → IGNORE (robots.txt does not concern them)
+          │                unknown + heavy     → REVIEW (a person decides)
           ▼
-   ③ ORDINA PER VOLUME   bloccare chi fa il 5% vale più di dieci che fanno lo 0,1%
+   ③ SORT BY VOLUME      blocking the one doing 5% beats blocking ten doing 0.1%
           │
           ▼
-   ④ GENERA IL FILE      allowlist esplicita, poi i blocchi, poi le REGOLE ESISTENTI invariate
-          │              mai `Allow: /` prima dei divieti · mai righe vuote dentro un gruppo
+   ④ GENERATE THE FILE   explicit allowlist, then the blocks, then the EXISTING RULES unchanged
+          │              never `Allow: /` before the prohibitions · never blank lines inside a group
           ▼
-   ⑤ DICHIARA I LIMITI   cosa il robots.txt non può fermare, e quanto traffico non sa giudicare
+   ⑤ STATE THE LIMITS    what robots.txt cannot stop, and how much traffic it cannot judge
 ```
 
-Le scelte non ovvie, e il motivo:
+The non-obvious choices, and why:
 
-- **`ChatGPT-User` e `OAI-SearchBot` non sono scraper di addestramento.** Il primo è una fetch
-  innescata da una persona, il secondo alimenta i risultati di ricerca. Bloccarli toglie visibilità
-  senza togliere carico, quindi la policy è **allow** anche se il nome sembra dire il contrario.
-- **`Google-Extended` e `Applebot-Extended` non sono User-Agent**: esistono **solo** per il
-  `robots.txt` (dicono «non usare i miei contenuti per addestrare»). Metterli in una regola su UA non
-  fa nulla; qui vengono emessi nel file, dove hanno senso.
-- **Un crawler ignoto non è automaticamente inutile.** Sopra una soglia di volume viene proposto
-  **attivo** con il numero accanto (l'onere della prova si ribalta: costa troppo per ignorarlo);
-  sotto, viene proposto **commentato**, perché un blocco sbagliato non si vede.
-- **Le regole preesistenti si riportano invariate.** Sono state scritte per quel sito e l'algoritmo
-  non sa perché: se nel file precedente c'erano regole **orfane** (dopo una riga vuota) vengono
-  **recuperate** e segnalate, non perse.
-- **L'avviso finale non accusa nessuno.** Uno User-Agent da browser con quota alta è normale: dietro
-  una stringa ci sono migliaia di persone. Il tool dice solo che su quella fetta **non può
-  pronunciarsi**, perché per distinguere una persona da uno scraper travestito serve il **tasso per
-  IP** — che `advise` non guarda.
+- **`ChatGPT-User` and `OAI-SearchBot` are not training scrapers.** The first is a fetch triggered
+  by a person, the second feeds search results. Blocking them costs visibility without removing
+  load, so the policy is **allow** even though the name suggests otherwise.
+- **`Google-Extended` and `Applebot-Extended` are not User-Agents**: they exist **only** for
+  `robots.txt` (they mean «do not use my content for training»). Putting them in a UA-based rule
+  does nothing; here they are emitted into the file, where they mean something.
+- **An unknown crawler is not automatically useless.** Above a volume threshold it is proposed
+  **active** with the number next to it (the burden of proof flips: it costs too much to ignore);
+  below it, it is proposed **commented out**, because a wrong block is invisible.
+- **Pre-existing rules are carried over unchanged.** They were written for that site and the
+  algorithm does not know why: if the previous file had **orphaned** rules (after a blank line)
+  they are **recovered** and flagged, not lost.
+- **The closing warning accuses nobody.** A browser User-Agent with a high share is normal: behind
+  one string there are thousands of people. The tool only says that on that slice it **cannot reach
+  a verdict**, because telling a person from a disguised scraper needs the **per-IP rate** — which
+  `advise` does not look at.
 
-### Esempio, su dati reali
+### Example, on real data
 
 ```
-$ robotsmith advise --ua-counts ua.txt --current https://esempio.es/robots.txt --host esempio.es
-Osservate 182761 richieste da 60 user-agent distinti.
+$ robotsmith advise --ua-counts ua.txt --current https://example.com/robots.txt --host example.com
+Observed 182761 requests from 60 distinct user-agents.
 
-Cosa consiglio e perché:
-  PASSA    ChatGPT-User             4.49%  fetch innescata da una persona: bloccarla toglie visibilità, non carico
-  PASSA    Googlebot                3.86%  porta visite: bloccarlo costa traffico reale
-  BLOCCA   Bytespider               3.15%  prende contenuti per addestramento senza portare visite
-  VALUTA   YisouSpider              6.27%  crawler non riconosciuto ma pesante (6.3%): da valutare
+What I advise, and why:
+  ALLOW    ChatGPT-User             4.49%  fetch triggered by a person: blocking it costs visibility, not load
+  ALLOW    Googlebot                3.86%  brings visits: blocking it costs real traffic
+  BLOCK    Bytespider               3.15%  takes content for training without bringing visits
+  REVIEW   YisouSpider              6.27%  unrecognised but heavy crawler (6.3%): to be reviewed
 
-I blocchi consigliati toccano il 11.4% delle richieste osservate.
+The advised blocks touch 11.4% of the observed requests.
 
-⚠️ il 16.0% del traffico dichiara uno User-Agent da browser: questo comando non può dire se dietro
-   ci siano persone o scraper travestiti, perché non guarda il tasso per IP.
+⚠️ 16.0% of the traffic declares a browser User-Agent: this command cannot tell whether there are
+   people or disguised scrapers behind it, because it does not look at the per-IP rate.
 ```
 
-## Il matcher segue la RFC 9309, non la prima corrispondenza
+## Longest match, not first match
 
-Diverse implementazioni storiche (compresa quella nella stdlib di Python) applicano la **prima**
-regola che combacia. La RFC 9309 — e Google — usano la corrispondenza **più lunga**, con l'`Allow`
-che vince a pari lunghezza. Non è un dettaglio accademico:
+The parser is written in-house on purpose. The "historical" implementations (including Python's own
+stdlib `robotparser`) apply the **first** matching rule; RFC 9309 — and Google — use the **longest
+match**, with `Allow` winning ties:
 
 ```
 User-agent: *
@@ -110,39 +127,40 @@ Allow: /
 Disallow: /login
 ```
 
-`/login` risulta **permesso** con la prima-corrispondenza e **bloccato** con la RFC. Un tool che
-consiglia cosa scrivere deve modellare il comportamento dei crawler veri, quindi implementa la
-seconda — e `lint` segnala comunque quella disposizione, perché non tutti i crawler sono conformi.
+`/login` comes out **allowed** under first-match and **disallowed** under the RFC. A tool that
+advises what to write has to model how real crawlers behave, so it implements the second one — and
+`lint` still flags that layout, because not every crawler is compliant.
 
-## Uso
+## Usage
 
 ```bash
 go install github.com/Allan-Nava/robotsmith@latest
 
-# verifica: il file c'è, è fresco, dice il giusto (31 casi)
-robotsmith check esempio.it --origin https://origin.interno/robots.txt
+# verify: the file is there, it is fresh, it says the right thing (31 cases)
+robotsmith check example.com --origin https://internal.origin/robots.txt
 
-# difetti strutturali di un file locale o remoto
+# structural defects of a local or remote file
 robotsmith lint ./robots.txt
 
-# consiglio dai log (HAProxy o nginx), preservando le regole attuali
-robotsmith advise --log access.log --current https://esempio.it/robots.txt --host esempio.it --out robots.txt
+# advice from the logs (HAProxy or nginx), preserving the current rules
+robotsmith advise --log access.log --current https://example.com/robots.txt --host example.com --out robots.txt
 
-# oppure da un conteggio già fatto
+# or from a count you already have
 awk '{n=split($0,q,"\""); if(n>=5) print q[4]}' access.log | sort | uniq -c | sort -rn > ua.txt
 robotsmith advise --ua-counts ua.txt
 ```
 
-Uscite: **0** tutto come dovrebbe · **1** qualcosa non lo è · **2** errore d'uso · **4** file non
-raggiungibile. Adatto a una pipeline CI: un `robots.txt` che perde regole o resta bloccato in cache
-diventa una build rossa invece di una scoperta tardiva.
+Exit codes: **0** everything as it should be · **1** something is not · **2** usage error ·
+**4** file unreachable. Fit for a CI pipeline: a `robots.txt` that loses rules or stays stuck in a
+cache becomes a red build instead of a late discovery.
 
-## ⛔ Cosa questo tool non fa
+## ⛔ What this tool does not do
 
-Non dice se i crawler **obbediscono**: `robots.txt` è una richiesta, non un controllo. Si misura dai
-log nei giorni successivi. E contro gli scraper che si travestono da browser non può nulla **per
-costruzione** — non c'è un token da scrivere: lì servono un tetto di richieste per IP o un WAF.
+It does not tell you whether crawlers **obey**: `robots.txt` is a request, not a control. That is
+measured from the logs over the following days. And against scrapers disguised as browsers it can do
+nothing **by construction** — there is no token to write: that calls for a per-IP request cap or a
+WAF.
 
-## Licenza
+## License
 
 MIT.

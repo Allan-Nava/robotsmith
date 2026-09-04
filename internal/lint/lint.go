@@ -1,5 +1,6 @@
-// Package lint trova i difetti STRUTTURALI di un robots.txt: quelli che rendono il file diverso da
-// come chi l'ha scritto pensa che sia. Sono la causa più comune di "l'ho messo e non funziona".
+// Package lint finds the STRUCTURAL defects of a robots.txt: the ones that make the file behave
+// differently from what its author thinks it says. They are the most common cause of "I wrote it
+// and it does not work".
 package lint
 
 import (
@@ -10,7 +11,7 @@ import (
 	"github.com/Allan-Nava/robotsmith/internal/matcher"
 )
 
-// Severity distingue ciò che è rotto da ciò che è fragile.
+// Severity separates what is broken from what is fragile.
 type Severity int
 
 const (
@@ -20,62 +21,62 @@ const (
 
 func (s Severity) String() string {
 	if s == Error {
-		return "ERRORE"
+		return "ERROR"
 	}
-	return "AVVISO"
+	return "WARNING"
 }
 
-// Finding è un difetto trovato.
+// Finding is one defect found.
 type Finding struct {
 	Sev  Severity
 	Msg  string
 	Line int
 }
 
-// Check analizza il contenuto. `host` è l'host da cui il file è stato scaricato (per la Sitemap).
+// Check analyses the content. `host` is the host the file was downloaded from (for the Sitemap).
 func Check(body, host string) []Finding {
 	var out []Finding
 	r := matcher.Parse(body)
 
 	if strings.TrimSpace(body) == "" {
-		return append(out, Finding{Error, "file VUOTO: per un crawler equivale a «tutto permesso», " +
-			"non a «tutto vietato»", 0})
+		return append(out, Finding{Error, "EMPTY file: to a crawler this means \"everything is " +
+			"allowed\", not \"everything is forbidden\"", 0})
 	}
 	if len(r.Groups) == 0 {
-		out = append(out, Finding{Error, "nessun gruppo `User-agent:`: tutte le direttive sono ignorate", 0})
+		out = append(out, Finding{Error, "no `User-agent:` group: every directive is ignored", 0})
 	}
-	// 1) regole orfane: la causa numero uno di regole che "non si applicano"
+	// 1) orphan rules: the number one cause of rules that "do not apply"
 	for _, o := range r.Orphans {
 		verb := "Disallow"
 		if o.Allow {
 			verb = "Allow"
 		}
 		out = append(out, Finding{Error, fmt.Sprintf(
-			"`%s: %s` è dopo una riga VUOTA dentro un gruppo: la riga vuota chiude il record, quindi "+
-				"un parser stretto ignora questa regola (Google la rispetta comunque). Togli la riga vuota",
+			"`%s: %s` comes after a BLANK line inside a group: the blank line closes the record, so "+
+				"a strict parser ignores this rule (Google honours it anyway). Remove the blank line",
 			verb, o.Pattern), o.Line})
 	}
-	// 2) `Allow: /` prima dei Disallow: innocuo con Google (vince il match più lungo), fatale con i
-	//    parser a prima-corrispondenza
+	// 2) `Allow: /` before the Disallow rules: harmless with Google (longest match wins), fatal
+	//    with first-match parsers
 	for _, g := range r.Groups {
 		for i, rule := range g.Rules {
 			if !rule.Allow || rule.Pattern != "/" {
 				continue
 			}
-			for _, dopo := range g.Rules[i+1:] {
-				if !dopo.Allow {
+			for _, later := range g.Rules[i+1:] {
+				if !later.Allow {
 					out = append(out, Finding{Warn, fmt.Sprintf(
-						"`Allow: /` è PRIMA di `Disallow: %s`: con Google non cambia nulla (vince la "+
-							"corrispondenza più lunga) ma un parser a prima-corrispondenza annulla tutti i "+
-							"divieti. Spostalo in fondo al gruppo, o togli la riga: ciò che non è vietato "+
-							"è già permesso", dopo.Pattern), rule.Line})
+						"`Allow: /` comes BEFORE `Disallow: %s`: with Google nothing changes (the "+
+							"longest match wins) but a first-match parser voids every prohibition. Move it "+
+							"to the end of the group, or drop the line: whatever is not forbidden is "+
+							"already allowed", later.Pattern), rule.Line})
 					break
 				}
 			}
 			break
 		}
 	}
-	// 3) Sitemap di un altro host
+	// 3) Sitemap on another host
 	for _, sm := range r.Sitemaps {
 		if host == "" {
 			continue
@@ -85,12 +86,12 @@ func Check(body, host string) []Finding {
 			b := strings.TrimPrefix(strings.ToLower(host), "www.")
 			if a != "" && a != b {
 				out = append(out, Finding{Warn, fmt.Sprintf(
-					"la `Sitemap:` punta a un altro host (%s): una sitemap cross-domain non viene "+
-						"considerata", a), 0})
+					"the `Sitemap:` points to another host (%s): a cross-domain sitemap is not "+
+						"considered", a), 0})
 			}
 		}
 	}
-	// 4) un gruppo che blocca tutto per tutti
+	// 4) a group that blocks everything for everyone
 	for _, g := range r.Groups {
 		for _, ag := range g.Agents {
 			if ag != "*" {
@@ -98,9 +99,9 @@ func Check(body, host string) []Finding {
 			}
 			for _, rule := range g.Rules {
 				if !rule.Allow && rule.Pattern == "/" {
-					out = append(out, Finding{Error, "`User-agent: *` con `Disallow: /`: il sito " +
-						"esce dagli indici. Se è voluto (ambiente di staging) va bene, altrimenti è " +
-						"il difetto più costoso possibile", rule.Line})
+					out = append(out, Finding{Error, "`User-agent: *` with `Disallow: /`: the site " +
+						"drops out of the search indexes. If that is intended (a staging environment) " +
+						"it is fine, otherwise it is the most expensive defect there is", rule.Line})
 				}
 			}
 		}
