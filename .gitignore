@@ -2,5 +2,8 @@
 /dist/
 *.out
 
-# Locally installed agent skills: tooling for whoever works here, not project code.
-/.claude/
+# ⚠️ `.claude/skills/` is deliberately NOT ignored: CLAUDE.md vendors graphify, qrspi and
+# token-efficiency so anyone who clones the repo gets them, with no global install. Only the
+# per-machine bits and the generated graph stay out.
+/.claude/settings.local.json
+/graphify-out/

@@ -182,7 +182,7 @@ them, with no global install and no plugin marketplace:
 
 | Skill | Invoke | What it is for here |
 |---|---|---|
-| [graphify](.claude/skills/graphify/) | `/graphify` | Turns the repo (or `docs/`, or a log corpus) into a navigable knowledge graph. Once `graphify-out/` exists, questions about architecture and file relationships go through it first instead of a fresh grep sweep. |
+| [graphify](.claude/skills/graphify/) | `/graphify` | Turns the repo (or `docs/`, or a log corpus) into a navigable knowledge graph. Once `graphify-out/` exists, questions about architecture and file relationships go through it first instead of a fresh grep sweep. Build or refresh it with `graphify update .` — AST only, no LLM and no API key; `graphify-out/` is **generated** and stays out of git (`.gitignore`). |
 | [qrspi](.claude/skills/qrspi/) | `/qrspi` | Questions → Research → Spec → Plan → Implement, one self-contained artifact per phase under `thoughts/<task-id>/`. Use it for changes that span the parser *and* the policy tables, where a single session would drift. |
 | [token-efficiency](.claude/skills/token-efficiency/) | `/token-efficiency` | Diagnoses why a session got expensive or started re-reading files it already had. |
 
