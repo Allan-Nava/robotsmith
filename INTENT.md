@@ -163,6 +163,43 @@ repository instead of a second `homebrew-tap` repo, because a second repo is a s
 alive; its checksum is rewritten by the release workflow, because a formula updated by hand goes
 stale after the first release nobody remembers to edit.
 
+### A diff, because the review is where the decision happens
+`advise` was printing a whole new file next to the old one and leaving the reader to compare them.
+Given the asymmetry — nobody notices a wrongly blocked scraper, everybody notices a wrongly blocked
+Googlebot — a review that is hard simply does not happen, and the mistake it would have caught is
+the expensive one. So the diff shows what moves, marks the dangerous case separately (`!`: the file
+currently says the opposite of the advice), and says "nothing to change" in one line when that is
+the answer.
+
+### Hand-written groups were being lost, and that was the worst bug in the tool
+This file said, from the first day, that the worst damage the tool can do is lose a rule a person
+wrote — and `advise` preserved only the `*` group, silently dropping a group written for a crawler
+the logs never showed. Two things fixed it: the groups are carried over verbatim in their own
+section, and the diff **names** them (`~`), because silence is the mechanism by which a rule gets
+lost. The parser also keeps the original spelling of a user-agent token now: rewriting `YandexBot`
+as `yandexbot` is identical to a crawler and reads, to a person, like the tool mangled their file.
+
+### The policy table is published, not hidden
+The classification table is the opinionated core of the tool, and it was readable only by opening
+the source. `robotsmith crawlers` prints it in evaluation order — the order is part of the answer,
+since the first match wins — and the test that backs it derives a sample user-agent from each
+pattern and checks it still classifies as its own rule says. That is what makes a rule shadowed by
+an earlier pattern fail the build instead of becoming dead code.
+
+### Fetching a sitemap is opt-in
+`lint` checks the sitemap's host, which catches a copy-paste from another site. Checking that it
+*answers* catches the more common failure — a 404 after a migration, invisible for weeks — but it
+means making a network call, and the sitemap of a large site is a big file. A verification tool that
+generates traffic nobody asked for is a tool people stop running, so `--sitemaps` is a request, not
+a default.
+
+### Evidence only where it exists
+For an unrecognised crawler the decision hinges on the shape of the traffic, not the share alone:
+0.4% spread over a crawl frontier is a different proposition from 0.4% in one burst. The log already
+carries the paths and the timestamps, and the tool was throwing them away. It shows them **only**
+for the decisions a person has to take, and **only** from a real log — a `uniq -c` count cannot know
+them, and inventing them would be worse than omitting them.
+
 ## Non-goals
 
 Stated, not forgotten:
@@ -189,6 +226,9 @@ Stated, not forgotten:
   schemas, `lint --strict`, logs from stdin and gzip, CLI integration tests on the exit-code
   contract, release automation with the version from the tag, and a gate that keeps the docs
   honest. Each decision above; backlog in [BACKLOG.md](BACKLOG.md).
+- **2026-09-04** — milestone *v0.3.0 — Sharper advice* implemented: `advise --diff`,
+  `robotsmith crawlers`, `check --sitemaps`, evidence behind a REVIEW — and the fix for
+  hand-written groups being dropped, which was the worst defect in the tool. Reasoning above.
 - **2026-09-04** — the backlog is now projected onto GitHub issues automatically, reversing the
   "no sync on purpose" decision taken the same day (reasoning above), and the tool ships as a
   container image and a Homebrew formula.

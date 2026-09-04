@@ -158,6 +158,15 @@ robotsmith check example.com --origin https://internal.origin/robots.txt
 # structural defects of a local or remote file
 robotsmith lint ./robots.txt
 
+# ...and does every Sitemap: line actually answer? (asks the network, so it is opt-in)
+robotsmith check example.com --sitemaps
+
+# what would change if I applied the advice? (the review, not a second file to eyeball)
+robotsmith advise --log access.log --current https://example.com/robots.txt --diff
+
+# the opinion this tool applies, readable before you trust it with your logs
+robotsmith crawlers
+
 # advice from the logs (HAProxy or nginx), preserving the current rules
 robotsmith advise --log access.log --current https://example.com/robots.txt --host example.com --out robots.txt
 
@@ -179,6 +188,7 @@ robotsmith advise --ua-counts ua.txt
 |---|---|---|
 | `check` | `--origin <url>` | compares the public copy with the origin — the only reliable way to catch a stale CDN copy |
 | `check` | `--path <path>` | the path the expected cases are evaluated against (default `/`) |
+| `check` | `--sitemaps` | also ask every `Sitemap:` URL whether it answers — off by default, because a verification must not make network calls nobody asked for |
 | `check` | `--quiet` | print the verdict only |
 | `lint` | `--strict` | make warnings fail too, for a file that must be correct under a first-match parser as well |
 | `advise` | `--log <file\|->` | access log (HAProxy or nginx); `-` reads stdin and gzipped input is decompressed transparently |
@@ -186,6 +196,7 @@ robotsmith advise --ua-counts ua.txt
 | `advise` | `--current <file\|url>` | the current `robots.txt`, whose rules are preserved verbatim |
 | `advise` | `--host <host>` | the site's host, used to validate the `Sitemap:` line |
 | `advise` | `--out <file>` | write the advised file there instead of stdout |
+| `advise` | `--diff` | review what would change against `--current`, instead of printing the whole file |
 | all three | `--json` | emit a machine-readable document on stdout (see below) |
 <!-- flags:end -->
 
@@ -199,9 +210,10 @@ pin the `schema` field, which is the only stable promise (the prose is free to b
 
 | Command | Schema | Carries |
 |---|---|---|
-| `check` | `robotsmith.check/1` | cases, failures, deindexing flag, problems, structural findings, cache headers |
+| `check` | `robotsmith.check/1` | cases, failures, deindexing flag, problems, structural findings, cache headers, sitemap answers |
 | `lint` | `robotsmith.lint/1` | findings with severity and line — what a CI annotation needs |
-| `advise` | `robotsmith.advise/1` | decisions (family, policy, share, reason), warnings **and** the advised file |
+| `advise` | `robotsmith.advise/1` | decisions (family, policy, share, reason, and for a log input the paths and time span behind them), warnings **and** the advised file |
+| `crawlers` | `robotsmith.crawlers/1` | the whole classification table in evaluation order |
 
 ```bash
 robotsmith lint ./robots.txt --json | jq -r '.findings[] | "::error line=\(.line)::\(.message)"'

@@ -39,7 +39,7 @@ disagree with the items all fail the build. The counts below are therefore check
 | Milestone | Theme | Open | Done |
 |---|---|---:|---:|
 | [v0.2.0 — Fit for a pipeline](#v020--fit-for-a-pipeline) ✅ | make the tool consumable by machines, and cut real releases | 0 | 10 |
-| [v0.3.0 — Sharper advice](#v030--sharper-advice) | better answers on the same input | 4 | 0 |
+| [v0.3.0 — Sharper advice](#v030--sharper-advice) ✅ | better answers on the same input | 0 | 4 |
 | [v0.4.0 — Your policy, verified continuously](#v040--your-policy-verified-continuously) | overridable policy, a closed loop, one-line CI, a report you can send | 6 | 0 |
 | [Backlog (unscheduled)](#backlog-unscheduled) | worth doing, not worth scheduling | 3 | 0 |
 
@@ -209,15 +209,19 @@ guarded by a test.
 
 # v0.3.0 — Sharper advice
 
+> ✅ **Closed** — all four items implemented and tested, written up in
+> [CHANGELOG.md](CHANGELOG.md) under `0.3.0`.
+
 **Goal**: better answers on the same input. Nothing here changes the contract; it changes how much
 a person learns from one run.
 
 ### `advise-diff` — show the delta against the current file, not the whole file
 
-- **status**: open
+- **status**: done
 - **priority**: high
 - **labels**: advise, ux
 - **milestone**: v0.3.0 — Sharper advice
+- **ref**: [internal/advise/diff.go](internal/advise/diff.go), `TestAdviseDiffShowsOnlyWhatWouldChange`
 
 `advise --current` already reads the existing file, but it prints a whole new one: the reader has to
 diff two ~60-line files by eye to see that the advice is "block two crawlers, keep everything else".
@@ -229,10 +233,11 @@ change, and a test asserts that a run whose advice changes nothing prints an emp
 
 ### `crawlers-command` — `robotsmith crawlers` prints the classification table
 
-- **status**: open
+- **status**: done
 - **priority**: medium
 - **labels**: advise, ux
 - **milestone**: v0.3.0 — Sharper advice
+- **ref**: `cmdCrawlers`, `TestRulesExposesTheWholeTableAndNothingIsShadowed`
 
 The policy table is the opinionated core of the tool, and today the only way to see it is to read
 `internal/advise/advise.go`. Someone deciding whether to trust `advise` needs to see what it
@@ -244,10 +249,11 @@ by an earlier pattern becomes visible instead of silently dead.
 
 ### `sitemap-reachability` — check the `Sitemap:` actually answers
 
-- **status**: open
+- **status**: done
 - **priority**: low
 - **labels**: lint, check
 - **milestone**: v0.3.0 — Sharper advice
+- **ref**: `check.RunWith` + `--sitemaps`, `TestSitemapsAreOnlyFetchedWhenAsked`
 
 `lint` verifies the sitemap host, which catches the copy-paste-from-another-site case. It does not
 catch the more common one: a sitemap that 404s or redirects after a migration, which is invisible
@@ -259,10 +265,11 @@ local server.
 
 ### `unknown-crawler-evidence` — say *what* an unknown crawler asked for
 
-- **status**: open
+- **status**: done
 - **priority**: medium
 - **labels**: advise
 - **milestone**: v0.3.0 — Sharper advice
+- **ref**: `advise.Evidence`, `TestReadLogCollectsPathsAndTimeSpan`
 
 For an unknown but heavy crawler the tool says "review this" and hands over a percentage. The
 decision a person actually has to make — is this a channel or a leech? — needs the shape of the

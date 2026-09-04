@@ -1,3 +1,6 @@
 /robotsmith
 /dist/
 *.out
+
+# Locally installed agent skills: tooling for whoever works here, not project code.
+/.claude/

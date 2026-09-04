@@ -52,12 +52,21 @@ test found them, not a re-read.
 
 - **Do not add dependencies.** Stdlib only. If a parser is needed, write it (there is one already).
 - **Do not touch `LICENSE`** or the documented exit codes.
-- **Do not tag and do not release.** A `v*` tag triggers a public release; only the maintainer
-  creates one.
+- **Commit your work; never push it.** Logical commits, message = what changes and why. A `v*` tag
+  triggers a public release, so create one only when asked, locally — the `git push` is always the
+  maintainer's.
 - **No network in tests**: use `httptest.NewServer`. No real domains, not even in runnable examples.
 - **Do not introduce a toolchain** for the site or the logo: `docs/` is hand-written HTML and SVG.
 - **Keep everything in English**: code, comments, messages and documentation.
 - **Do not "clean up" the `⚠️` comments**: they mark pitfalls that have already cost a bug.
+
+## Skills available in-repo
+
+[.claude/skills/](.claude/skills/) is checked in, so these work on a fresh clone:
+`/graphify` (repo → knowledge graph; if `graphify-out/` exists, query it before grepping),
+`/qrspi` (phase-by-phase workflow writing one artifact per phase to `thoughts/<task-id>/`, for a
+change too big for one session), `/token-efficiency` (why a session got expensive). They are pinned
+copies — do not "sync" them as a side effect of another change.
 
 ## What to deliver
 

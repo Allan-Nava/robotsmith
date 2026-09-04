@@ -20,8 +20,12 @@ Adapted from the `devops_hiway` conventions, cut down to what a single-binary re
   behaviour or removals, **patch** for fixes. The version is **not** a constant — it is stamped in
   from the tag with `-ldflags -X main.version=`, so nothing has to be kept in sync by hand; the
   release workflow refuses to publish a tag whose CHANGELOG section is missing.
-- **NEVER `git push`** and never tag a release on your own initiative — pushing is always the
-  maintainer's call. No `Co-Authored-By` trailers.
+- **Commit your own work**, in logical commits, with a message saying what changes and **why** (no
+  file lists, no `Co-Authored-By`). A commit is local and revertible: leaving changes uncommitted
+  just means somebody else has to write your message for you.
+- **NEVER `git push`.** That is the maintainer's call, always. Same for `gh release`: the tag is
+  what triggers the public release, so an agent creates the annotated tag **locally** only when
+  asked, and never pushes it.
 - **Document always, without asking.** A behaviour change touches [README.md](README.md) (usage) and
   `docs/index.html` (the public page); a debatable decision gets a dated line in
   [INTENT.md](INTENT.md); a threshold, exit code or output format change gets one in the
@@ -167,6 +171,22 @@ No change is finished without its documentation. Concretely:
   so it flips background and ink together. Edit them by hand: do not introduce a toolchain to
   generate an image.
 
+## Skills checked into the repo
+
+[.claude/skills/](.claude/skills/) vendors three agent skills so anyone who clones robotsmith gets
+them, with no global install and no plugin marketplace:
+
+| Skill | Invoke | What it is for here |
+|---|---|---|
+| [graphify](.claude/skills/graphify/) | `/graphify` | Turns the repo (or `docs/`, or a log corpus) into a navigable knowledge graph. Once `graphify-out/` exists, questions about architecture and file relationships go through it first instead of a fresh grep sweep. |
+| [qrspi](.claude/skills/qrspi/) | `/qrspi` | Questions → Research → Spec → Plan → Implement, one self-contained artifact per phase under `thoughts/<task-id>/`. Use it for changes that span the parser *and* the policy tables, where a single session would drift. |
+| [token-efficiency](.claude/skills/token-efficiency/) | `/token-efficiency` | Diagnoses why a session got expensive or started re-reading files it already had. |
+
+They are **copies**, pinned at the version vendored: they do not update when the global skill or the
+`qrspi` plugin does. Refresh them deliberately with a commit that says which version came in.
+`thoughts/` is a QRSPI working directory, not a documentation surface — the durable decisions still
+land in [INTENT.md](INTENT.md), and the todos still live only in [BACKLOG.md](BACKLOG.md).
+
 ## Pointers
 
 | File | Question it answers |
@@ -176,6 +196,7 @@ No change is finished without its documentation. Concretely:
 | this file / [AGENTS.md](AGENTS.md) | **How** work is done here (people / coding agents) |
 | [BACKLOG.md](BACKLOG.md) | **What is missing**, by milestone — the roadmap |
 | [CHANGELOG.md](CHANGELOG.md) | **What changed**, release by release |
+| [.claude/skills/](.claude/skills/) | **Which skills** ship with the repo (`graphify`, `qrspi`, `token-efficiency`) |
 
 ## Automation
 
@@ -190,5 +211,6 @@ Nothing here needs a person to remember it:
 | tag `v*` | [release.yml](.github/workflows/release.yml) | runs the suite, cross-compiles linux/darwin × amd64/arm64 with the version from the tag, extracts the notes from `CHANGELOG.md` (**fails if the section is missing**), publishes binaries + `checksums.txt`, then rewrites `url`/`sha256` in [Formula/robotsmith.rb](Formula/robotsmith.rb) and commits it |
 | monthly | [dependabot.yml](.github/dependabot.yml) | bumps the workflow actions (Go modules are not listed: zero dependencies is an invariant) |
 
-Cutting a release is therefore: write the CHANGELOG section, `git tag -a vX.Y.Z`, and let the
-maintainer push. An agent does neither the tag nor the push.
+Cutting a release is therefore: write the CHANGELOG section, commit, `git tag -a vX.Y.Z` (the tag
+message is that section), and let the maintainer `git push --follow-tags`. The push is the release:
+until it happens nothing is public and every step is revertible.

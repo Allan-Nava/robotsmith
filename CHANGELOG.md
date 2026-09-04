@@ -7,7 +7,37 @@ consumers get exactly what a tag says. Pushing is always the maintainer's call, 
 
 ## [Unreleased]
 
-_Nothing yet. Next up: [v0.3.0 — Sharper advice](BACKLOG.md#v030--sharper-advice)._
+_Nothing yet. Next up: [v0.4.0 — Your policy, verified continuously](BACKLOG.md#v040--your-policy-verified-continuously)._
+
+## [0.3.0] — 2026-09-04
+
+**Sharper advice** — same inputs, more of the reasoning made visible. No change to the exit codes or
+to the JSON schemas (only optional fields were added).
+
+### Added
+- **`advise --diff`**: reviews what applying the advice would change against `--current`, instead
+  of printing a second file to compare by eye — added groups, groups the file contradicts (`!`,
+  with the current directive quoted) and groups carried over verbatim (`~`). An empty diff says so
+  in one line.
+- **`robotsmith crawlers`** (`--json`, `robotsmith.crawlers/1`): publishes the classification table
+  in evaluation order — family, policy, the token it writes, and why. The opinion this tool applies
+  is now readable before running it on anyone's logs.
+- **`check --sitemaps`**: asks every `Sitemap:` URL whether it actually answers, reporting status,
+  content type and size. Off by default — a verification must not make network calls nobody asked
+  for. A sitemap that 404s after a migration used to be invisible until Search Console complained.
+- **Evidence behind a `REVIEW`**: from a `--log` input, an unrecognised crawler now comes with the
+  paths it asked for and the time span it spread over — a crawl over eight hours is a different
+  proposition from a burst, and a share alone cannot tell them apart. Also in the JSON document as
+  an optional `evidence` field. A `--ua-counts` input claims nothing, because it cannot know.
+- `matcher.Group.AgentsRaw`: the user-agent tokens as written, so anything rewriting a group keeps
+  the spelling its author chose.
+
+### Fixed
+- **Hand-written groups are no longer dropped.** `advise` preserved only the `*` group: a group
+  someone wrote for a crawler the logs never showed (`User-agent: YandexBot`) disappeared from the
+  generated file. They are now carried over verbatim, in their own commented section, and named in
+  the diff. This was the one damage the tool must never do
+  ([INTENT.md](INTENT.md): *the worst damage this tool can do is lose a rule a person wrote*).
 
 ## [0.2.0] — 2026-09-04
 
@@ -87,6 +117,7 @@ installable everywhere, and the automation that keeps all of it honest.
 - `internal/matcher`: RFC 9309 parser and evaluation (longest match, `Allow` wins ties).
 - Exit codes `0` / `1` / `2` / `4` as a CI contract.
 
-[Unreleased]: https://github.com/Allan-Nava/robotsmith/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/Allan-Nava/robotsmith/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/Allan-Nava/robotsmith/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/Allan-Nava/robotsmith/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/Allan-Nava/robotsmith/releases/tag/v0.1.0

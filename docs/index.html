@@ -117,7 +117,13 @@ package manager inside it.</p>
   <div class="cmd">
     <h3>advise</h3>
     <p>What <em>should</em> you write, given your logs? Classifies the observed crawlers and
-    generates the file, explaining every line.</p>
+    generates the file, explaining every line. <code>--diff</code> reviews what would change
+    instead.</p>
+  </div>
+  <div class="cmd">
+    <h3>crawlers</h3>
+    <p>What opinion does this tool hold? Prints the whole classification table in evaluation order
+    — family, policy, the token it would write, and why.</p>
   </div>
 </div>
 
@@ -191,6 +197,24 @@ anything?</em> — and the answer determines the policy.</p>
   reach a verdict, because telling a person from a disguised scraper needs the <b>per-IP rate</b> —
   which <code>advise</code> does not look at.</li>
 </ul>
+
+<h3>Reviewing the advice, not re-reading the file</h3>
+<p>Applying advice is a decision someone has to sign off on, and the risk is asymmetric: nobody
+notices a wrongly blocked scraper, everybody notices a wrongly blocked Googlebot. So
+<code>--diff</code> answers the reviewer's actual question — what would change? — instead of handing
+over a second sixty-line file to compare by eye.</p>
+<pre><code>$ robotsmith advise --log access.log --current ./robots.txt --diff
++ ChatGPT-User           Allow: /       13.02%  fetch triggered by a person: blocking it costs visibility, not load
+! Googlebot              Allow: /       11.20%  brings visits: blocking it costs real traffic
+                         ⚠️  the file currently says: Disallow: /
++ Bytespider             Disallow: /     9.13%  takes content for training without bringing visits
++ YisouSpider            Disallow: /    18.20%  unrecognised but heavy crawler (18.2%): to be reviewed
+~ YandexBot              Disallow: /search       written for this site, kept verbatim: this tool does not know why it is there
+
++ added   ! the file says the opposite   ~ kept verbatim (not advised here)</code></pre>
+<p class="sub">The <code>~</code> line matters as much as the others: a group written by a person for
+a crawler the logs never showed is carried over <b>verbatim</b> and named out loud, because silence
+is how a rule gets lost.</p>
 
 <h3>Example</h3>
 <pre><code>$ robotsmith advise --ua-counts ua.txt --current https://example.com/robots.txt --host example.com
@@ -273,6 +297,7 @@ robotsmith advise --ua-counts ua.txt</code></pre>
   <tbody>
     <tr><td><code>check</code></td><td><code>--origin &lt;url&gt;</code></td><td>compares the public copy with the origin — the only reliable way to catch a stale CDN copy</td></tr>
     <tr><td><code>check</code></td><td><code>--path &lt;path&gt;</code></td><td>the path the expected cases are evaluated against (default <code>/</code>)</td></tr>
+    <tr><td><code>check</code></td><td><code>--sitemaps</code></td><td>ask every <code>Sitemap:</code> URL whether it answers — off by default, because a verification must not make network calls nobody asked for</td></tr>
     <tr><td><code>check</code></td><td><code>--quiet</code></td><td>print the verdict only</td></tr>
     <tr><td><code>lint</code></td><td><code>--strict</code></td><td>make warnings fail too, for a file that must be correct under a first-match parser as well</td></tr>
     <tr><td><code>advise</code></td><td><code>--log &lt;file|-&gt;</code></td><td>access log (HAProxy or nginx); <code>-</code> reads stdin, gzipped input is decompressed transparently</td></tr>
@@ -280,6 +305,7 @@ robotsmith advise --ua-counts ua.txt</code></pre>
     <tr><td><code>advise</code></td><td><code>--current &lt;file|url&gt;</code></td><td>the current <code>robots.txt</code>, whose rules are preserved verbatim</td></tr>
     <tr><td><code>advise</code></td><td><code>--host &lt;host&gt;</code></td><td>the site's host, used to validate the <code>Sitemap:</code> line</td></tr>
     <tr><td><code>advise</code></td><td><code>--out &lt;file&gt;</code></td><td>write the advised file there instead of stdout</td></tr>
+    <tr><td><code>advise</code></td><td><code>--diff</code></td><td>review what would change against <code>--current</code>, instead of printing the whole file</td></tr>
     <tr><td>all three</td><td><code>--json</code></td><td>emit a machine-readable document on stdout</td></tr>
   </tbody>
 </table>
@@ -294,7 +320,8 @@ number.</p>
   <tbody>
     <tr><td><code>check</code></td><td><code>robotsmith.check/1</code></td><td>cases, failures, deindexing flag, problems, structural findings, cache headers</td></tr>
     <tr><td><code>lint</code></td><td><code>robotsmith.lint/1</code></td><td>findings with severity and line — what a CI annotation needs</td></tr>
-    <tr><td><code>advise</code></td><td><code>robotsmith.advise/1</code></td><td>decisions (family, policy, share, reason), warnings <b>and</b> the advised file</td></tr>
+    <tr><td><code>advise</code></td><td><code>robotsmith.advise/1</code></td><td>decisions (family, policy, share, reason, and — from a log — the paths and time span behind them), warnings <b>and</b> the advised file</td></tr>
+    <tr><td><code>crawlers</code></td><td><code>robotsmith.crawlers/1</code></td><td>the whole classification table, in evaluation order</td></tr>
   </tbody>
 </table>
 <pre><code>robotsmith lint ./robots.txt --json | jq -r '.findings[] | "::error line=\(.line)::\(.message)"'
