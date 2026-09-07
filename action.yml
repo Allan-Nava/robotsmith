@@ -1,0 +1,134 @@
+# robotsmith as a GitHub Action, so adding it to a pipeline is three lines:
+#
+#   - uses: Allan-Nava/robotsmith@v1
+#     with:
+#       command: lint
+#       target: robots.txt
+#
+# Composite, not Docker: a Docker action pays an image build or pull on every run, and this is a
+# 6 MB static binary. It downloads the release asset for the runner and verifies it against the
+# release's own checksums.txt — a CI step that curls an unverified binary and runs it is a supply
+# chain nobody audited.
+name: robotsmith
+description: Verify a robots.txt, or advise one from your traffic, with findings as annotations
+author: Allan-Nava
+branding:
+  icon: shield
+  color: orange
+
+inputs:
+  command:
+    description: 'check | lint | advise | crawlers'
+    required: false
+    default: lint
+  target:
+    description: 'What to run it on: a file, a URL or a domain. Not used by `crawlers`.'
+    required: false
+    default: robots.txt
+  args:
+    description: 'Extra flags, verbatim (e.g. "--strict", "--sitemaps", "--origin https://origin/robots.txt")'
+    required: false
+    default: ''
+  version:
+    description: 'Release to use: a tag like v0.3.0, or "latest"'
+    required: false
+    default: latest
+  format:
+    description: 'text | json | github — "github" turns findings into annotations on the offending lines'
+    required: false
+    default: github
+  fail-on-findings:
+    description: 'Fail the step when the tool exits non-zero. Set to false to report only.'
+    required: false
+    default: 'true'
+
+outputs:
+  exit-code:
+    description: 'The toolexit code: 0 all as it should be, 1 something is not, 2 usage, 4 unreachable'
+    value: ${{ steps.run.outputs.exit-code }}
+  output:
+    description: 'Everything the tool wrote to stdout (the JSON document when format is json)'
+    value: ${{ steps.run.outputs.output }}
+
+runs:
+  using: composite
+  steps:
+    - name: Install robotsmith
+      shell: bash
+      env:
+        VERSION: ${{ inputs.version }}
+      run: |
+        set -euo pipefail
+        case "$(uname -s)" in
+          Linux)  os=linux ;;
+          Darwin) os=darwin ;;
+          *) echo "::error::robotsmith ships linux and darwin binaries; this runner is $(uname -s)"; exit 1 ;;
+        esac
+        case "$(uname -m)" in
+          x86_64|amd64) arch=amd64 ;;
+          arm64|aarch64) arch=arm64 ;;
+          *) echo "::error::unsupported architecture $(uname -m)"; exit 1 ;;
+        esac
+
+        base="https://github.com/Allan-Nava/robotsmith/releases"
+        if [ "$VERSION" = "latest" ]; then
+          url="$base/latest/download"
+        else
+          url="$base/download/$VERSION"
+        fi
+
+        tmp="$(mktemp -d)"
+        archive="robotsmith_${os}_${arch}.tar.gz"
+        # ⚠️ Verify before running. The checksum comes from the same release as the archive, which
+        # is the strongest claim available without a signing key — and it catches the real-world
+        # failure this protects against: a truncated download, or an asset replaced by mistake.
+        curl -fsSL "$url/$archive"      -o "$tmp/$archive"
+        curl -fsSL "$url/checksums.txt" -o "$tmp/checksums.txt"
+        ( cd "$tmp" && grep " $archive\$" checksums.txt | sha256sum -c - )
+        tar -xzf "$tmp/$archive" -C "$tmp"
+        install -m 0755 "$tmp/robotsmith" "$tmp/bin-robotsmith" 2>/dev/null || cp "$tmp/robotsmith" "$tmp/bin-robotsmith"
+        echo "ROBOTSMITH=$tmp/bin-robotsmith" >> "$GITHUB_ENV"
+        "$tmp/bin-robotsmith" version
+
+    - name: Run robotsmith
+      id: run
+      shell: bash
+      env:
+        COMMAND: ${{ inputs.command }}
+        TARGET: ${{ inputs.target }}
+        ARGS: ${{ inputs.args }}
+        FORMAT: ${{ inputs.format }}
+        FAIL_ON: ${{ inputs.fail-on-findings }}
+      run: |
+        set -uo pipefail
+        # `crawlers` takes no target; the others do.
+        target=("$TARGET")
+        if [ "$COMMAND" = "crawlers" ]; then target=(); fi
+
+        set +e
+        # shellcheck disable=SC2086 -- ARGS is meant to be word-split: it is a flag list.
+        out="$("$ROBOTSMITH" "$COMMAND" "${target[@]}" --format "$FORMAT" $ARGS 2>&1)"
+        code=$?
+        set -e
+
+        printf '%s\n' "$out"
+        echo "exit-code=$code" >> "$GITHUB_OUTPUT"
+        {
+          echo "output<<ROBOTSMITH_EOF"
+          printf '%s\n' "$out"
+          echo "ROBOTSMITH_EOF"
+        } >> "$GITHUB_OUTPUT"
+
+        # The step summary is where somebody looks after the fact; annotations are for the diff.
+        {
+          echo "### robotsmith $COMMAND"
+          echo '```'
+          printf '%s\n' "$out"
+          echo '```'
+        } >> "$GITHUB_STEP_SUMMARY"
+
+        if [ "$code" -ne 0 ] && [ "$FAIL_ON" != "true" ]; then
+          echo "::notice::robotsmith exited $code; fail-on-findings is false, so the step passes"
+          exit 0
+        fi
+        exit "$code"

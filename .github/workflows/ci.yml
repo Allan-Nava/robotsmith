@@ -24,5 +24,16 @@ jobs:
           for target in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64; do
             CGO_ENABLED=0 GOOS="${target%/*}" GOARCH="${target#*/}" go build -o /dev/null .
           done
+      # The action is dogfooded here on purpose: a mistake in action.yml is a red check in this
+      # repo before it is a red check for a stranger. ⚠️ `version: latest` downloads a RELEASED
+      # binary, so this exercises the action's install path, not the code in this branch — the
+      # branch's own behaviour is covered by the suite above.
+      - name: Our own action, on our own robots.txt
+        uses: ./
+        with:
+          command: lint
+          target: docs/robots.txt
+          args: --strict
+
       - name: Coverage summary
         run: go test -coverprofile=cover.out ./... >/dev/null && go tool cover -func=cover.out | tail -1

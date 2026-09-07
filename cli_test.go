@@ -366,3 +366,66 @@ func TestAdviseFromCountsClaimsNoEvidence(t *testing.T) {
 		t.Error("a count file has no paths: the tool must not pretend otherwise")
 	}
 }
+
+func TestGitHubFormatEmitsAnnotationsAndKeepsTheVerdict(t *testing.T) {
+	broken := writeTemp(t, "robots.txt", "User-agent: *\n\nDisallow: /admin/\n")
+	code, stdout, _ := runCLI("lint", "--format", "github", broken)
+	if code != 1 {
+		t.Errorf("exit code = %d, expected 1: the output format never changes the verdict", code)
+	}
+	if !strings.HasPrefix(stdout, "::error file=") {
+		t.Fatalf("stdout must be workflow commands:\n%s", stdout)
+	}
+	if !strings.Contains(stdout, "line=3") {
+		t.Errorf("the annotation must land on the defective line:\n%s", stdout)
+	}
+	if strings.Contains(stdout, "\n\n") {
+		t.Errorf("one command per line, nothing else:\n%q", stdout)
+	}
+}
+
+func TestFormatJSONIsTheSameAsTheJSONFlag(t *testing.T) {
+	// --json shipped in 0.2.0 and stays: --format json is the same thing said the new way.
+	broken := writeTemp(t, "robots.txt", "User-agent: *\n\nDisallow: /a\n")
+	_, viaFlag, _ := runCLI("lint", "--json", broken)
+	_, viaFormat, _ := runCLI("lint", "--format", "json", broken)
+	if viaFlag != viaFormat {
+		t.Errorf("--json and --format json must produce the same document:\n%s\n---\n%s", viaFlag, viaFormat)
+	}
+}
+
+func TestAnUnknownFormatIsAUsageError(t *testing.T) {
+	// Silently falling back to text would hide a typo in a pipeline for as long as nobody reads it.
+	code, _, stderr := runCLI("lint", "--format", "yaml", writeTemp(t, "robots.txt", "User-agent: *\nDisallow:\n"))
+	if code != 2 {
+		t.Errorf("exit code = %d, expected 2 (usage error)", code)
+	}
+	if !strings.Contains(stderr, "text") || !strings.Contains(stderr, "github") {
+		t.Errorf("the error must list what is valid: %q", stderr)
+	}
+}
+
+func TestCheckSpeaksGitHubToo(t *testing.T) {
+	code, stdout, _ := runCLI("check", "--format", "github", serveRobots(t, "User-agent: *\nDisallow: /\n", 200))
+	if code != 1 {
+		t.Errorf("exit code = %d, expected 1", code)
+	}
+	if !strings.Contains(stdout, "::error") || !strings.Contains(stdout, "Googlebot") {
+		t.Errorf("a blocked search engine must be annotated:\n%s", stdout)
+	}
+}
+
+func TestACleanRunAnnotatesNothingAndSaysSo(t *testing.T) {
+	// An empty stdout with exit 0 is correct but reads like a silent failure in a log: one line
+	// costs nothing and tells whoever is scrolling that the check ran.
+	code, stdout, stderr := runCLI("lint", "--format", "github", writeTemp(t, "robots.txt", "User-agent: *\nDisallow: /admin/\n"))
+	if code != 0 {
+		t.Fatalf("exit code = %d", code)
+	}
+	if strings.Contains(stdout, "::error") || strings.Contains(stdout, "::warning") {
+		t.Errorf("nothing to annotate:\n%s", stdout)
+	}
+	if !strings.Contains(stdout+stderr, "no structural defect") {
+		t.Errorf("it must still say it ran:\nstdout %q\nstderr %q", stdout, stderr)
+	}
+}

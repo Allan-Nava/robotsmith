@@ -132,7 +132,8 @@ func versionString(v string, info *debug.BuildInfo) string {
 func usageText() string {
 	return `robotsmith ` + versionString(version, nil) + ` — verify and advise a robots.txt
 
-  robotsmith check  <domain|url> [--origin <url>] [--path /] [--sitemaps] [--quiet] [--json]
+  robotsmith check  <domain|url> [--origin <url>] [--path /] [--sitemaps] [--quiet]
+                    [--format text|json|github]
       Verifies that the file is there, is FRESH and says the right thing (` +
 		strconv.Itoa(len(check.MustPass)+len(check.MustBeBlocked)) + ` cases).
       --origin compares the public copy with the origin: it is the only reliable way
@@ -140,11 +141,13 @@ func usageText() string {
       --sitemaps also asks every Sitemap: URL whether it answers (off by default:
       a verification must not make network calls nobody asked for).
 
-  robotsmith lint   <file|url> [--strict] [--json]
+  robotsmith lint   <file|url> [--strict] [--format text|json|github]
       Structural defects: empty file, orphan rules after a blank line,
       "Allow: /" before the Disallow rules, Sitemap on another host, Disallow: / for everyone.
       --strict makes warnings fail too, for a team that wants the file correct
       under a first-match parser as well.
+      --format github emits GitHub Actions annotations on the offending lines,
+      which is what the bundled action uses (--json is --format json).
 
   robotsmith advise --log <access.log|-> | --ua-counts <file> [--current <file|url>]
                     [--host <host>] [--out <file>] [--diff] [--json]
@@ -165,6 +168,24 @@ func usageText() string {
 ` + exitCodeLine() + `
 With --json the document goes to stdout and nothing else does; the verdict is unchanged.
 `
+}
+
+// outputFormats are the shapes an answer can take. ⚠️ The format never changes the verdict: only
+// how it is said. `--json` shipped first and stays as an alias, because pipelines pin it.
+var outputFormats = []string{"text", "json", "github"}
+
+func resolveFormat(format string, jsonAlias bool, errw io.Writer) (string, bool) {
+	if jsonAlias && format == "text" {
+		format = "json"
+	}
+	for _, f := range outputFormats {
+		if format == f {
+			return format, true
+		}
+	}
+	// Falling back to text silently would hide a typo in a pipeline for as long as nobody reads it.
+	fmt.Fprintf(errw, "unknown --format %q: valid values are %s\n", format, strings.Join(outputFormats, ", "))
+	return "", false
 }
 
 // newFlagSet builds a flag set that reports usage errors instead of killing the process: the
@@ -198,11 +219,16 @@ func reorderArgs(args []string) []string {
 	return append(flags, rest...)
 }
 
-// takesValue lists the flags that take a value: the others are booleans.
+// takesValue lists the flags that carry a value: the others are booleans.
+//
+// ⚠️ Adding a value-flag means adding it here too, or `reorderArgs` hands it the operand as its
+// value — `lint robots.txt --format github` once became `--format robots.txt`.
+// `TestEveryValueFlagIsKnownToTheArgumentReordering` walks the real flag sets and fails when this
+// list falls behind.
 func takesValue(f string) bool {
 	f = strings.TrimLeft(f, "-")
 	switch f {
-	case "origin", "path", "log", "ua-counts", "current", "host", "out":
+	case "origin", "path", "log", "ua-counts", "current", "host", "out", "format":
 		return true
 	}
 	return false
@@ -211,7 +237,7 @@ func takesValue(f string) bool {
 // checkOpts, lintOpts and adviseOpts exist so flag registration lives in one place per command:
 // the documentation gate walks these flag sets, so a new flag is documented or CI goes red.
 type checkOpts struct {
-	origin, path            string
+	origin, path, format    string
 	quiet, asJSON, sitemaps bool
 }
 
@@ -222,7 +248,8 @@ func checkFlags(errw io.Writer) (*flag.FlagSet, *checkOpts) {
 	fs.StringVar(&o.path, "path", "/", "path to test")
 	fs.BoolVar(&o.quiet, "quiet", false, "print the verdict only")
 	fs.BoolVar(&o.sitemaps, "sitemaps", false, "also check that every Sitemap: URL answers (makes network calls)")
-	fs.BoolVar(&o.asJSON, "json", false, "emit a machine-readable document on stdout")
+	fs.StringVar(&o.format, "format", "text", "output shape: text, json or github (workflow annotations)")
+	fs.BoolVar(&o.asJSON, "json", false, "shorthand for --format json")
 	return fs, o
 }
 
@@ -235,13 +262,17 @@ func crawlersFlags(errw io.Writer) (*flag.FlagSet, *crawlersOpts) {
 	return fs, o
 }
 
-type lintOpts struct{ strict, asJSON bool }
+type lintOpts struct {
+	format         string
+	strict, asJSON bool
+}
 
 func lintFlags(errw io.Writer) (*flag.FlagSet, *lintOpts) {
 	fs := newFlagSet("lint", errw)
 	o := &lintOpts{}
 	fs.BoolVar(&o.strict, "strict", false, "make warnings fail too (exit 1)")
-	fs.BoolVar(&o.asJSON, "json", false, "emit a machine-readable document on stdout")
+	fs.StringVar(&o.format, "format", "text", "output shape: text, json or github (workflow annotations)")
+	fs.BoolVar(&o.asJSON, "json", false, "shorthand for --format json")
 	return fs, o
 }
 
@@ -272,6 +303,10 @@ func cmdCheck(args []string, out, errw io.Writer) int {
 		fmt.Fprint(errw, usageText())
 		return 2
 	}
+	format, ok := resolveFormat(opt.format, opt.asJSON, errw)
+	if !ok {
+		return 2
+	}
 	u, host, err := check.RobotsURL(fs.Arg(0))
 	if err != nil {
 		fmt.Fprintln(errw, "invalid URL:", err)
@@ -285,10 +320,19 @@ func cmdCheck(args []string, out, errw io.Writer) int {
 	}
 	findings := lint.Check(res.Body, host)
 
-	if opt.asJSON {
+	switch format {
+	case "json":
 		if err := report.Write(out, report.FromCheck(res, opt.path, findings)); err != nil {
 			fmt.Fprintln(errw, err)
 			return 1
+		}
+		return verdict(len(res.Problems) == 0)
+	case "github":
+		for _, a := range report.Annotations(report.FromCheck(res, opt.path, findings)) {
+			fmt.Fprintln(out, a)
+		}
+		if len(res.Problems) == 0 {
+			fmt.Fprintf(out, "✅ OK — %d cases verified\n", res.Cases)
 		}
 		return verdict(len(res.Problems) == 0)
 	}
@@ -368,6 +412,10 @@ func cmdLint(args []string, out, errw io.Writer) int {
 		fmt.Fprint(errw, usageText())
 		return 2
 	}
+	format, ok := resolveFormat(opt.format, opt.asJSON, errw)
+	if !ok {
+		return 2
+	}
 	src := fs.Arg(0)
 	body, host, err := read(src)
 	if err != nil {
@@ -376,10 +424,20 @@ func cmdLint(args []string, out, errw io.Writer) int {
 	}
 	findings := lint.Check(body, host)
 
-	if opt.asJSON {
+	switch format {
+	case "json":
 		if err := report.Write(out, report.FromLint(src, findings)); err != nil {
 			fmt.Fprintln(errw, err)
 			return 1
+		}
+		return lintVerdict(findings, opt.strict)
+	case "github":
+		for _, a := range report.Annotations(report.FromLint(src, findings)) {
+			fmt.Fprintln(out, a)
+		}
+		if len(findings) == 0 {
+			// Exit 0 with an empty stdout reads like a silent failure in a log.
+			fmt.Fprintln(out, "✅ no structural defect")
 		}
 		return lintVerdict(findings, opt.strict)
 	}

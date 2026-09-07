@@ -204,6 +204,20 @@ carries the paths and the timestamps, and the tool was throwing them away. It sh
 for the decisions a person has to take, and **only** from a real log — a `uniq -c` count cannot know
 them, and inventing them would be worse than omitting them.
 
+### The annotations live in the binary, the action stays thin
+An annotation is only useful if it lands on the defective line in the diff view — a summary in the
+job log is something nobody scrolls to. Getting there depends on GitHub's escaping rules (an
+unescaped newline ends the workflow command, and the rest of a multi-line message vanishes), which
+are easy to get wrong and impossible to unit-test in YAML. So the formatting is Go code with tests,
+and the action passes `--format` through. It also means anyone can get annotations without the
+action, in any CI.
+
+The action downloads a released binary and checks it against the release's own `checksums.txt`
+rather than requiring a Go toolchain on the runner. A CI step that curls an unverified binary and
+executes it is a supply chain nobody audited; the checksum is the strongest claim available without
+a signing key, and it catches the failure that actually happens — a truncated download or an asset
+replaced by mistake.
+
 ### Dogfooding, without shipping a decoration
 The plan was "publish a robots.txt for our own site". The site is a *project* page, and crawlers read
 robots.txt only from the host root — so a file at `…/robotsmith/robots.txt` would have been exactly
@@ -245,6 +259,8 @@ Stated, not forgotten:
   schemas, `lint --strict`, logs from stdin and gzip, CLI integration tests on the exit-code
   contract, release automation with the version from the tag, and a gate that keeps the docs
   honest. Each decision above; backlog in [BACKLOG.md](BACKLOG.md).
+- **2026-09-04** — shipped as a GitHub Action, with findings as annotations (first item of
+  *v0.4.0*). Reasoning above.
 - **2026-09-04** — the tool is now run against its own published site weekly, and the file it
   publishes is checked by its own tests. Reasoning above under *Dogfooding, without shipping a
   decoration*.

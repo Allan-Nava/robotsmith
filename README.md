@@ -201,11 +201,32 @@ robotsmith advise --ua-counts ua.txt
 | `advise` | `--host <host>` | the site's host, used to validate the `Sitemap:` line |
 | `advise` | `--out <file>` | write the advised file there instead of stdout |
 | `advise` | `--diff` | review what would change against `--current`, instead of printing the whole file |
-| all three | `--json` | emit a machine-readable document on stdout (see below) |
+| `check`, `lint` | `--format <text\|json\|github>` | the shape of the answer; `github` emits workflow annotations on the offending lines |
+| all four | `--json` | shorthand for `--format json` (kept: pipelines pin it) |
 <!-- flags:end -->
 
 The flag table above is checked against the binary by a test: a flag that exists and is not
 documented — or documented and no longer exposed — fails the build.
+
+### In a GitHub workflow
+
+```yaml
+- uses: Allan-Nava/robotsmith@v1
+  with:
+    command: lint
+    target: robots.txt
+```
+
+Findings come back as **annotations on the offending lines** (`--format github` is the action's
+default), so a defect shows up in the diff view of the pull request instead of in a log nobody
+scrolls. `command` takes `check`, `lint`, `advise` or `crawlers`; `args` passes flags verbatim
+(`--strict`, `--sitemaps`, `--origin …`); `version` pins a release; `fail-on-findings: false`
+reports without failing the job. The step exposes `exit-code` and `output`, so a later step can
+comment, open a ticket or trend the numbers.
+
+The action downloads the release binary for the runner and **verifies it against the release's own
+`checksums.txt`** before running it — a CI step that curls an unverified binary and executes it is a
+supply chain nobody audited.
 
 ### Machine-readable output
 

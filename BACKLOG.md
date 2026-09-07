@@ -40,7 +40,7 @@ disagree with the items all fail the build. The counts below are therefore check
 |---|---|---:|---:|
 | [v0.2.0 — Fit for a pipeline](#v020--fit-for-a-pipeline) ✅ | make the tool consumable by machines, and cut real releases | 0 | 10 |
 | [v0.3.0 — Sharper advice](#v030--sharper-advice) ✅ | better answers on the same input | 0 | 4 |
-| [v0.4.0 — Your policy, verified continuously](#v040--your-policy-verified-continuously) | overridable policy, a closed loop, one-line CI, a report you can send | 6 | 0 |
+| [v0.4.0 — Your policy, verified continuously](#v040--your-policy-verified-continuously) | overridable policy, a closed loop, one-line CI, a report you can send | 5 | 1 |
 | [Backlog (unscheduled)](#backlog-unscheduled) | worth doing, not worth scheduling | 2 | 1 |
 
 ---
@@ -295,10 +295,11 @@ and make the result something you can hand to whoever actually signs off on it.
 
 ### `github-action` — a composite action, so adding this to a pipeline is three lines
 
-- **status**: open
+- **status**: done
 - **priority**: high
 - **labels**: ci, ux
 - **milestone**: v0.4.0 — Your policy, verified continuously
+- **ref**: [action.yml](action.yml), `internal/report.Annotations`, [#14](https://github.com/Allan-Nava/robotsmith/issues/14)
 
 The tool is CI-shaped — machine-readable output, an exit-code contract, a container image — and
 still every team has to write the same twenty lines of workflow to use it. An action that wraps

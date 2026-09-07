@@ -8,6 +8,15 @@ consumers get exactly what a tag says. Pushing is always the maintainer's call, 
 ## [Unreleased]
 
 ### Added
+- **A GitHub Action** ([action.yml](action.yml)): three lines to put robotsmith in a pipeline.
+  Composite, not Docker — it downloads the release binary for the runner and **verifies it against
+  the release's own `checksums.txt`** before running it. Exposes `exit-code` and `output` so a later
+  step can comment or open a ticket, and `fail-on-findings: false` reports without failing. This
+  repo's CI uses it on `docs/robots.txt`, so a mistake in the action is a red check here first.
+- **`--format text|json|github`** on `check` and `lint`. `github` emits workflow annotations **on
+  the offending line**, which is the only place a reviewer reads them; the escaping lives in
+  `internal/report.Annotations` with tests, because an unescaped newline silently truncates a
+  workflow command. `--json` stays as shorthand for `--format json`: pipelines pin it.
 - **The tool now eats its own cooking.** [docs/robots.txt](docs/robots.txt) is the file this project
   would publish for its own site, held to robotsmith's standard by robotsmith's tests on every run:
   clean lint, and all 32 expected cases satisfied. [docs/sitemap.xml](docs/sitemap.xml) ships too,
@@ -76,6 +85,9 @@ to the JSON schemas (only optional fields were added).
   the spelling its author chose.
 
 ### Fixed
+- `lint robots.txt --format github` parsed as `--format robots.txt`: a value-flag missing from the
+  argument reordering swallowed the operand. Found by running it by hand, then closed as a class —
+  a test now walks the real flag sets and fails when a value-flag is not declared to the reordering.
 - **Hand-written groups are no longer dropped.** `advise` preserved only the `*` group: a group
   someone wrote for a crawler the logs never showed (`User-agent: YandexBot`) disappeared from the
   generated file. They are now carried over verbatim, in their own commented section, and named in

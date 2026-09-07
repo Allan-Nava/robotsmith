@@ -310,6 +310,22 @@ robotsmith advise --ua-counts ua.txt</code></pre>
   </tbody>
 </table>
 
+<h3>In a GitHub workflow</h3>
+<pre><code>- uses: Allan-Nava/robotsmith@v1
+  with:
+    command: lint
+    target: robots.txt</code></pre>
+<p>Findings come back as <b>annotations on the offending lines</b>, so a defect shows up in the diff
+view of the pull request instead of in a log nobody scrolls. <code>command</code> takes
+<code>check</code>, <code>lint</code>, <code>advise</code> or <code>crawlers</code>;
+<code>fail-on-findings: false</code> reports without failing the job; the step exposes
+<code>exit-code</code> and <code>output</code> for a later step to act on. The action downloads the
+release binary for the runner and verifies it against the release's own <code>checksums.txt</code>
+before running it — a CI step that curls an unverified binary and executes it is a supply chain
+nobody audited.</p>
+<p class="sub">Without the action, any CI gets the same thing:
+<code>robotsmith lint robots.txt --format github</code>.</p>
+
 <h3>Machine-readable output</h3>
 <p><code>--json</code> puts one document on stdout and nothing else there; the exit code is
 unchanged. Consumers pin the <code>schema</code> field, which is the only stable promise — the prose

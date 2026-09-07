@@ -113,3 +113,37 @@ func TestHomebrewInstallIsVerifiedByAWorkflow(t *testing.T) {
 		}
 	}
 }
+
+func TestTheCompositeActionIsUsableAndDogfooded(t *testing.T) {
+	// ⚠️ An action nobody runs is an action that is broken in public. This repo uses its own,
+	// so a mistake in action.yml is a red check here before it is a red check for a stranger.
+	a := readDoc(t, "action.yml")
+	for _, want := range []string{
+		"using: composite", // no Docker image to build on every run
+		"command:",         // check | lint | advise | crawlers
+		"target:",          // file or domain
+		"version:",         // pin a release, or track the latest
+		"--format",         // the tool decides the shape; the action passes it through
+		"default: github",  // ...and annotations are the default: they are why this exists
+		"checksums.txt",    // a downloaded binary is verified before it runs
+		"outputs:",         // so a later step can act on the verdict
+	} {
+		if !strings.Contains(a, want) {
+			t.Errorf("action.yml is missing %q", want)
+		}
+	}
+	if strings.Contains(a, "go install") && !strings.Contains(a, "fallback") {
+		t.Error("if it can fall back to `go install`, say so: it needs a Go toolchain on the runner")
+	}
+
+	ci := readDoc(t, ".github/workflows/ci.yml")
+	if !strings.Contains(ci, "uses: ./") {
+		t.Error("ci.yml must run the action from this checkout: an untested action is a broken one")
+	}
+
+	// The README is where somebody copies it from, and the docs gate cannot see YAML snippets.
+	readme := readDoc(t, "README.md")
+	if !strings.Contains(readme, "uses: Allan-Nava/robotsmith@") {
+		t.Error("README.md must show the three-line snippet, or nobody knows the action exists")
+	}
+}

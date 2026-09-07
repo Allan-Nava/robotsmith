@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -115,5 +116,33 @@ func TestUsageStatesTheRealNumberOfCases(t *testing.T) {
 	want := fmt.Sprintf("%d cases", len(check.MustPass)+len(check.MustBeBlocked))
 	if !strings.Contains(usageText(), want) {
 		t.Errorf("the usage text must state %q, got:\n%s", want, usageText())
+	}
+}
+
+func TestEveryValueFlagIsKnownToTheArgumentReordering(t *testing.T) {
+	// ⚠️ `reorderArgs` moves operands to the end, and to do that it must know which flags carry a
+	// value: one that is missing gets the operand as its value instead. That is how
+	// `lint file --format github` became `--format file`. A new value-flag must be added to
+	// `takesValue`, and this is the check that says so.
+	for cmd, fs := range allFlagSets() {
+		fs.VisitAll(func(f *flag.Flag) {
+			_, isBool := f.Value.(interface{ IsBoolFlag() bool })
+			if isBool {
+				return // booleans take no value: nothing to reorder
+			}
+			if !takesValue(f.Name) {
+				t.Errorf("%s: --%s takes a value but takesValue() does not list it, so "+
+					"`%s <operand> --%s <value>` misparses", cmd, f.Name, cmd, f.Name)
+			}
+		})
+	}
+}
+
+func TestFlagsAndOperandInEitherOrder(t *testing.T) {
+	// The whole point of the reordering: both spellings must behave the same.
+	got := reorderArgs([]string{"robots.txt", "--strict", "--format", "github"})
+	want := []string{"--strict", "--format", "github", "robots.txt"}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("reorderArgs = %v, expected %v", got, want)
 	}
 }
