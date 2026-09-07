@@ -30,7 +30,7 @@ jobs:
       SITE: https://allan-nava.github.io/robotsmith
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with:
           go-version: '1.24'
       - run: go build -o robotsmith .
