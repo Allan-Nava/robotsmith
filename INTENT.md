@@ -204,6 +204,29 @@ carries the paths and the timestamps, and the tool was throwing them away. It sh
 for the decisions a person has to take, and **only** from a real log — a `uniq -c` count cannot know
 them, and inventing them would be worse than omitting them.
 
+### One layout model, two backends — and colour is never the channel
+The report exists because the terminal output does not survive the trip to whoever signs off on the
+change. Rendering it twice was the obvious risk: two renderers drift, and then the numbers in the
+attached deck disagree with the numbers in the tool, which is precisely the credibility the report
+was for. So the bars, labels and rows are computed once and two thin backends draw them, with a test
+asserting every share in the HTML appears in the PDF.
+
+Three constraints that came from the medium rather than from taste. **Self-contained**: the artifact
+is emailed and opened on a laptop with no network, so inline CSS and inline SVG, no JavaScript and
+nothing fetched — which also rules out a chart library, consistent with zero dependencies. **No pie
+chart**: the argument being made is "this one is worth more than those ten", which a pie destroys at
+exactly the sizes that matter; horizontal bars sorted by volume, each labelled at its own end.
+**Colour is the second channel, never the first**: every bar carries its policy word and a glyph,
+because red and green are one colour to a deuteranope and a printed page has none. The palette was
+run through a validator rather than eyeballed; the light amber sits under 3:1 on the light surface,
+whose documented relief — visible labels and a full table — is what the report already has.
+
+For the PDF: base-14 fonts, so no embedding and no dependency, and the text stays selectable and
+searchable instead of being a picture of a report. Uncompressed content streams, so the same input
+produces byte-identical output and a report can be diffed in CI instead of eyeballed. And because a
+PDF has no reflow, line widths are checked by arithmetic — Courier advances exactly 0.6 em — rather
+than by looking at it once.
+
 ### A share is a snapshot; the decision is about the direction
 The volume thresholds answer "how much does this cost today", which is the wrong question for
 anything small. Two crawlers at 0.4% — one flat for a year, one quadrupled this month — got the same
@@ -292,6 +315,8 @@ Stated, not forgotten:
   schemas, `lint --strict`, logs from stdin and gzip, CLI integration tests on the exit-code
   contract, release automation with the version from the tag, and a gate that keeps the docs
   honest. Each decision above; backlog in [BACKLOG.md](BACKLOG.md).
+- **2026-09-07** — milestone *v0.4.0 — Your policy, verified continuously* complete: `--policy`,
+  `check --expect`, `advise --compare`, and the HTML/PDF report. Reasoning above.
 - **2026-09-04** — shipped as a GitHub Action, with findings as annotations (first item of
   *v0.4.0*). Reasoning above.
 - **2026-09-04** — the tool is now run against its own published site weekly, and the file it

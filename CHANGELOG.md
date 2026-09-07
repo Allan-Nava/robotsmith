@@ -7,6 +7,13 @@ consumers get exactly what a tag says. Pushing is always the maintainer's call, 
 
 ## [Unreleased]
 
+_Nothing yet._
+
+## [0.4.0] — 2026-09-07
+
+**Your policy, verified continuously** — the opinion became overridable, the loop closed, and the
+result became something you can hand to whoever signs off on it.
+
 ### Added
 - **`advise --policy <file.json>`** ([internal/policy](internal/policy/)): a site's own answers where
   it disagrees with the built-in table, and the reasoning then names the rule that fired and the
@@ -31,6 +38,17 @@ consumers get exactly what a tag says. Pushing is always the maintainer's call, 
 - `matcher.Decide` returns a verdict with its reasoning — the deciding rule, its line, the group as
   spelled in the file, and whether it came from `*`. `Allowed` is now a thin wrapper over it, so the
   two cannot drift.
+- **`advise --report <file.html|file.pdf>`** ([internal/visual](internal/visual/)): the same
+  analysis as an artifact you can send, because the person who signs off on blocking a third of the
+  crawler traffic is not the person who ran the command. **One layout model, two backends** — the
+  bars and rows are computed once, HTML emits inline SVG and PDF emits drawing operators; a test
+  asserts every share in the HTML also appears in the PDF, because two renderers drift and then the
+  deck disagrees with the tool. Self-contained (inline CSS, inline SVG, no JavaScript, nothing
+  fetched: it gets emailed and opened offline), bars sorted by volume with direct labels and a
+  glyph per policy so identity never rests on colour alone, and a print stylesheet. The PDF needs
+  no headless browser and no font embedding, keeps its text selectable, and is byte-identical for
+  the same input so a report can be diffed in CI. Line widths are checked by arithmetic, not by
+  eye: Courier advances 0.6 em, so a line that would run off the page fails the build.
 - **A GitHub Action** ([action.yml](action.yml)): three lines to put robotsmith in a pipeline.
   Composite, not Docker — it downloads the release binary for the runner and **verifies it against
   the release's own `checksums.txt`** before running it. Exposes `exit-code` and `output` so a later
@@ -195,7 +213,8 @@ installable everywhere, and the automation that keeps all of it honest.
 - `internal/matcher`: RFC 9309 parser and evaluation (longest match, `Allow` wins ties).
 - Exit codes `0` / `1` / `2` / `4` as a CI contract.
 
-[Unreleased]: https://github.com/Allan-Nava/robotsmith/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/Allan-Nava/robotsmith/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/Allan-Nava/robotsmith/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/Allan-Nava/robotsmith/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/Allan-Nava/robotsmith/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/Allan-Nava/robotsmith/releases/tag/v0.1.0

@@ -202,6 +202,7 @@ robotsmith advise --ua-counts ua.txt
 | `advise` | `--host <host>` | the site's host, used to validate the `Sitemap:` line |
 | `advise` | `--out <file>` | write the advised file there instead of stdout |
 | `advise` | `--diff` | review what would change against `--current`, instead of printing the whole file |
+| `advise` | `--report <file.html\|file.pdf>` | also write a visual report — the extension picks the backend |
 | `advise` | `--compare <previous.json>` | a stored `--json` document from an earlier run: report what grew, shrank, appeared or vanished |
 | `advise` | `--policy <file.json>` | this site's own answers where it disagrees with the built-in table (see below) |
 | `check`, `lint` | `--format <text\|json\|github>` | the shape of the answer; `github` emits workflow annotations on the offending lines |
@@ -210,6 +211,35 @@ robotsmith advise --ua-counts ua.txt
 
 The flag table above is checked against the binary by a test: a flag that exists and is not
 documented — or documented and no longer exposed — fails the build.
+
+### A report you can send
+
+The person who signs off on blocking a third of the crawler traffic is usually not the person who
+ran the command, and sixty lines of terminal output do not survive that trip. `--report` writes the
+same analysis as something you can attach:
+
+```bash
+robotsmith advise --log access.log --host example.com --report advice.html
+robotsmith advise --log access.log --host example.com --report advice.pdf
+```
+
+**One layout model, two backends.** The bars, labels and rows are computed once; the HTML backend
+emits inline SVG and the PDF backend emits PDF drawing operators. Producing the second rendering a
+second way is the trap: two renderers drift, and then the numbers in the deck disagree with the
+numbers in the tool — a test asserts every share in the HTML appears in the PDF.
+
+- **Self-contained**: inline CSS, inline SVG, no JavaScript, nothing fetched. It gets emailed and
+  opened on a laptop with no network — which also rules out a chart library.
+- **Bars sorted by volume with direct labels, no pie chart**: the argument is "this one is worth
+  more than those ten", which a pie destroys at exactly the sizes that matter. Every bar carries its
+  policy word and a glyph (`✓ ✗ ?`), so identity never rests on colour alone — red and green are one
+  colour to a deuteranope, and a printed page has none.
+- **PDF without a headless browser**: base-14 fonts, no embedding, text stays selectable and
+  searchable. Byte-identical for the same input, so a report can be diffed in CI instead of
+  eyeballed.
+
+⚠️ The report is an extra, never a replacement: stdout stays the file you deploy, so
+`advise --report advice.html > robots.txt` still works.
 
 ### Direction, not just a snapshot
 

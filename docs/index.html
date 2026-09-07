@@ -310,6 +310,22 @@ robotsmith advise --ua-counts ua.txt</code></pre>
   </tbody>
 </table>
 
+<h3>A report you can send</h3>
+<p>The person who signs off on blocking a third of the crawler traffic is usually not the person who
+ran the command, and sixty lines of terminal output do not survive that trip.</p>
+<pre><code>robotsmith advise --log access.log --host example.com --report advice.html
+robotsmith advise --log access.log --host example.com --report advice.pdf</code></pre>
+<p><b>One layout model, two backends.</b> The bars and rows are computed once; HTML emits inline
+SVG, PDF emits drawing operators. Rendering it twice a second way is the trap — two renderers
+drift, and then the numbers in the deck disagree with the numbers in the tool — so a test asserts
+every share in the HTML appears in the PDF. The HTML is self-contained (inline CSS and SVG, no
+JavaScript, nothing fetched: it gets emailed and opened offline); the PDF needs no headless browser,
+keeps its text selectable, and is byte-identical for the same input so it can be diffed in CI.</p>
+<p class="sub">Bars sorted by volume with direct labels, and never a pie chart: the argument is
+"this one is worth more than those ten", which a pie destroys at exactly the sizes that matter.
+Every bar carries its policy word and a glyph, so identity never rests on colour alone — red and
+green are one colour to a deuteranope, and a printed page has none.</p>
+
 <h3>Direction, not just a snapshot</h3>
 <p>A share says what a crawler costs today; the decision usually hinges on where it is going. 0.4%
 flat for a year and 0.4% quadrupling this month get the same answer from a share alone — and only

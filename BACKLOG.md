@@ -40,7 +40,7 @@ disagree with the items all fail the build. The counts below are therefore check
 |---|---|---:|---:|
 | [v0.2.0 — Fit for a pipeline](#v020--fit-for-a-pipeline) ✅ | make the tool consumable by machines, and cut real releases | 0 | 10 |
 | [v0.3.0 — Sharper advice](#v030--sharper-advice) ✅ | better answers on the same input | 0 | 4 |
-| [v0.4.0 — Your policy, verified continuously](#v040--your-policy-verified-continuously) | overridable policy, a closed loop, one-line CI, a report you can send | 2 | 4 |
+| [v0.4.0 — Your policy, verified continuously](#v040--your-policy-verified-continuously) ✅ | overridable policy, a closed loop, one-line CI, a report you can send | 0 | 6 |
 | [Backlog (unscheduled)](#backlog-unscheduled) | worth doing, not worth scheduling | 2 | 1 |
 
 ---
@@ -288,6 +288,9 @@ log.
 
 # v0.4.0 — Your policy, verified continuously
 
+> ✅ **Closed** — all six items implemented and tested, written up in
+> [CHANGELOG.md](CHANGELOG.md) under `0.4.0`.
+
 **Goal**: stop being a tool someone remembers to run, and stop being a tool only its operator can
 read. The opinion baked into the tables is a good default, not everyone's policy — so make it
 overridable, make the loop close (advise → deploy → verify), make it trivial to run on every push,
@@ -368,10 +371,11 @@ is promoted to `REVIEW` with the growth as its reason, and a test covers all fou
 
 ### `report-html` — a self-contained visual report
 
-- **status**: open
+- **status**: done
 - **priority**: high
 - **labels**: report, ux
 - **milestone**: v0.4.0 — Your policy, verified continuously
+- **ref**: [internal/visual/html.go](internal/visual/html.go), `TestHTMLIsSelfContained`, [#18](https://github.com/Allan-Nava/robotsmith/issues/18)
 
 The decision to block a crawler is rarely taken by the person running the command: it is taken by
 whoever reads the report attached to a ticket, and a 60-line terminal dump does not survive that
@@ -398,10 +402,11 @@ tidy pages via a print stylesheet, and it reads correctly in both light and dark
 
 ### `report-pdf` — the same report as a PDF, from the same layout
 
-- **status**: open
+- **status**: done
 - **priority**: medium
 - **labels**: report, ux
 - **milestone**: v0.4.0 — Your policy, verified continuously
+- **ref**: [internal/visual/pdf.go](internal/visual/pdf.go), `TestPDFAndHTMLAgreeOnEveryNumber`, [#19](https://github.com/Allan-Nava/robotsmith/issues/19)
 
 HTML covers the reader who opens a link; a PDF covers the one who gets it in an attachment, files
 it, or puts it in front of someone who signs off on blocking a third of the crawler traffic. The

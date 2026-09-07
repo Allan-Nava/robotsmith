@@ -16,6 +16,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"path/filepath"
 	"regexp"
 	"runtime/debug"
 	"sort"
@@ -28,6 +29,7 @@ import (
 	"github.com/Allan-Nava/robotsmith/internal/lint"
 	"github.com/Allan-Nava/robotsmith/internal/policy"
 	"github.com/Allan-Nava/robotsmith/internal/report"
+	"github.com/Allan-Nava/robotsmith/internal/visual"
 )
 
 // exitCodes is the single source of truth for the contract other people's pipelines depend on.
@@ -156,7 +158,7 @@ func usageText() string {
 
   robotsmith advise --log <access.log|-> | --ua-counts <file> [--current <file|url>]
                     [--host <host>] [--out <file>] [--diff] [--policy <file.json>]
-                    [--compare <previous.json>] [--json]
+                    [--compare <previous.json>] [--report <file.html|file.pdf>] [--json]
       ADVISES the file starting from the observed traffic, and explains why.
       --log accepts "-" for stdin and transparently reads gzipped logs, and is the
       only input that can show WHICH paths an unknown crawler asked for.
@@ -167,6 +169,9 @@ func usageText() string {
       --compare takes a stored --json document from an earlier run and reports
       what moved: a share is a snapshot, and the decision usually hinges on the
       direction. A small crawler growing fast is raised for review.
+      --report also writes a visual report, .html or .pdf by extension, for the
+      person who signs off on the change rather than the one running the command.
+      It is an extra: stdout stays the file you deploy.
       --ua-counts accepts the output of "... | sort | uniq -c" (count + user-agent).
 
   robotsmith crawlers [--json]
@@ -289,8 +294,8 @@ func lintFlags(errw io.Writer) (*flag.FlagSet, *lintOpts) {
 }
 
 type adviseOpts struct {
-	logFile, uaCounts, current, host, outFile, policyFile, compare string
-	asJSON, diff                                                   bool
+	logFile, uaCounts, current, host, outFile, policyFile, compare, report string
+	asJSON, diff                                                           bool
 }
 
 func adviseFlags(errw io.Writer) (*flag.FlagSet, *adviseOpts) {
@@ -302,6 +307,7 @@ func adviseFlags(errw io.Writer) (*flag.FlagSet, *adviseOpts) {
 	fs.StringVar(&o.host, "host", "", "host of the site, to validate the Sitemap line")
 	fs.StringVar(&o.policyFile, "policy", "", "JSON policy file: this site's answer where it disagrees with the defaults")
 	fs.StringVar(&o.compare, "compare", "", "a stored --json document from an earlier run: report what moved")
+	fs.StringVar(&o.report, "report", "", "also write a visual report here: .html or .pdf")
 	fs.StringVar(&o.outFile, "out", "", "write the advised file here instead of on stdout")
 	fs.BoolVar(&o.diff, "diff", false, "review what would change against --current, instead of printing the file")
 	fs.BoolVar(&o.asJSON, "json", false, "emit a machine-readable document on stdout")
@@ -584,6 +590,14 @@ func cmdAdvise(args []string, out, errw io.Writer) int {
 	a := advise.AnalyzeWith(obs, advise.Options{Override: override, Previous: previous})
 	text := advise.Render(a, existing, opt.host)
 
+	// ⚠️ The report is an EXTRA, never a replacement: stdout stays the file you deploy, so
+	// `advise --report r.html > robots.txt` keeps producing a clean file.
+	if opt.report != "" {
+		if code := writeReport(opt.report, a, text, opt.host, len(obs), errw); code != 0 {
+			return code
+		}
+	}
+
 	if opt.diff {
 		return printDiff(out, errw, a, existing, opt.host)
 	}
@@ -726,6 +740,29 @@ func expectationsFrom(path string, errw io.Writer) ([]check.Expectation, error) 
 		out = append(out, check.Expectation{UA: r.Pattern, Allow: r.Policy == advise.Allow, Why: r.Why})
 	}
 	return out, nil
+}
+
+// writeReport renders the visual report. The extension decides the backend: guessing, and writing
+// an HTML file called .docx, would be worse than refusing.
+func writeReport(path string, a *advise.Advice, text, host string, uas int, errw io.Writer) int {
+	doc := report.FromAdvise(a, text, uas)
+	m := visual.From(doc, host)
+	var body []byte
+	switch strings.ToLower(filepath.Ext(path)) {
+	case ".html", ".htm":
+		body = visual.HTML(m)
+	case ".pdf":
+		body = visual.PDF(m)
+	default:
+		fmt.Fprintf(errw, "cannot tell what %q should be: use .html or .pdf\n", path)
+		return 2
+	}
+	if err := os.WriteFile(path, body, 0o644); err != nil {
+		fmt.Fprintln(errw, err)
+		return 1
+	}
+	fmt.Fprintf(errw, "report written: %s (%s)\n", path, humanBytes(int64(len(body))))
+	return 0
 }
 
 // read accepts a local path or a URL.
