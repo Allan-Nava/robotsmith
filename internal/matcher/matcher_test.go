@@ -94,3 +94,46 @@ func TestParseKeepsTheOriginalSpellingOfAnAgent(t *testing.T) {
 		t.Errorf("AgentsRaw = %v: rendering needs the original spelling", g.AgentsRaw)
 	}
 }
+
+func TestDecideNamesTheRuleThatDecided(t *testing.T) {
+	// A verdict a reader cannot check is a verdict they have to trust. `check --expect` quotes the
+	// deployed file's own line, and this is where that line comes from.
+	body := "User-agent: *\nDisallow: /\n\nUser-agent: Googlebot\nAllow: /\nDisallow: /private\n"
+	r := Parse(body)
+
+	d := r.Decide("Mozilla/5.0 (compatible; Googlebot/2.1)", "/private")
+	if d.Allowed {
+		t.Error("/private is disallowed for Googlebot: the longer match wins")
+	}
+	if d.Agent != "Googlebot" {
+		t.Errorf("agent = %q, expected the token as written in the file", d.Agent)
+	}
+	if d.Rule == nil || d.Rule.Pattern != "/private" || d.Rule.Line != 6 {
+		t.Errorf("rule = %+v, expected `Disallow: /private` on line 6", d.Rule)
+	}
+
+	// Falling back to `*` must be visible: "your rule matched" and "you inherited the catch-all"
+	// are different things to a person reading a report.
+	d = r.Decide("SomeBot/1.0", "/anything")
+	if d.Allowed || d.Agent != "*" || !d.ViaStar {
+		t.Errorf("decision = %+v, expected the * group, marked as inherited", d)
+	}
+
+	// No applicable rule at all: allowed, and honest about there being nothing to quote.
+	d = Parse("Sitemap: https://example.com/s.xml\n").Decide("Googlebot", "/")
+	if !d.Allowed || d.Rule != nil || d.Agent != "" {
+		t.Errorf("decision = %+v, expected allowed with nothing to quote", d)
+	}
+}
+
+func TestDecideAgreesWithAllowed(t *testing.T) {
+	// Two code paths answering the same question would drift: Decide is the one with the detail,
+	// Allowed must be a thin wrapper over it.
+	body := "User-agent: *\nAllow: /\nDisallow: /login\nDisallow: /*.pdf$\n"
+	r := Parse(body)
+	for _, path := range []string{"/", "/login", "/a.pdf", "/a.pdf?x=1", "/deep/login/x"} {
+		if got, want := r.Decide("Googlebot", path).Allowed, r.Allowed("Googlebot", path); got != want {
+			t.Errorf("%s: Decide says %v, Allowed says %v", path, got, want)
+		}
+	}
+}

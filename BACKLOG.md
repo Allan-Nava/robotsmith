@@ -40,7 +40,7 @@ disagree with the items all fail the build. The counts below are therefore check
 |---|---|---:|---:|
 | [v0.2.0 — Fit for a pipeline](#v020--fit-for-a-pipeline) ✅ | make the tool consumable by machines, and cut real releases | 0 | 10 |
 | [v0.3.0 — Sharper advice](#v030--sharper-advice) ✅ | better answers on the same input | 0 | 4 |
-| [v0.4.0 — Your policy, verified continuously](#v040--your-policy-verified-continuously) | overridable policy, a closed loop, one-line CI, a report you can send | 4 | 2 |
+| [v0.4.0 — Your policy, verified continuously](#v040--your-policy-verified-continuously) | overridable policy, a closed loop, one-line CI, a report you can send | 3 | 3 |
 | [Backlog (unscheduled)](#backlog-unscheduled) | worth doing, not worth scheduling | 2 | 1 |
 
 ---
@@ -335,10 +335,11 @@ covers an override that contradicts the built-in table.
 
 ### `check-expect` — verify what got deployed is what was advised
 
-- **status**: open
+- **status**: done
 - **priority**: medium
 - **labels**: check, ci
 - **milestone**: v0.4.0 — Your policy, verified continuously
+- **ref**: `matcher.Decide`, `check.Expectation`, [#16](https://github.com/Allan-Nava/robotsmith/issues/16)
 
 Today `advise` produces a file and `check` verifies a fixed set of expectations. Nothing verifies
 the *specific* decisions a team made: block these four, keep these two — which is exactly what

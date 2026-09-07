@@ -327,6 +327,19 @@ importantly, written down — first match wins, as in the built-in table:</p>
 earlier one already covers is an error, not a warning — a policy file that half-works reads like an
 applied decision and is not one.</p>
 
+<h3>...and verified after it is deployed</h3>
+<p>The same file closes the loop: <code>advise --policy</code> decides, you deploy, and
+<code>check --expect</code> verifies what the origin actually serves — quoting the deployed file's
+own lines, and saying when an answer was merely <b>inherited from <code>*</code></b> rather than
+written for that crawler.</p>
+<pre><code>$ robotsmith check example.com --expect policy.json
+  ✅ bytespider               must be allowed — `Allow: /` (line 2, group `bytespider`)
+  ⛔ gptbot                   must be blocked — no rule in the file mentions it, inherited from `*`
+                             because: takes without giving</code></pre>
+<p class="sub">⚠️ It <b>replaces</b> the built-in cases: if you stated your policy, yours is the
+contract — otherwise a deliberate exception would fail a built-in case forever, and a check that is
+red by design is one people stop reading.</p>
+
 <h3>In a GitHub workflow</h3>
 <pre><code>- uses: Allan-Nava/robotsmith@v1
   with:

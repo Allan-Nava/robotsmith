@@ -500,3 +500,80 @@ func TestPolicyReachesTheJSONDocument(t *testing.T) {
 		t.Errorf("decision = %+v: a consumer must be able to tell an override from a default", d)
 	}
 }
+
+func TestCheckExpectClosesTheLoop(t *testing.T) {
+	// The same file that drives `advise --policy` verifies what got deployed.
+	served := "User-agent: Bytespider\nAllow: /\n\nUser-agent: *\nDisallow: /admin/\n"
+	pol := writeTemp(t, "policy.json", `{"schema":"robotsmith.policy/1","rules":[
+	  {"pattern":"bytespider","policy":"allow","why":"we license our content to them"},
+	  {"pattern":"gptbot","policy":"block","why":"takes without giving"},
+	  {"pattern":"semrush","policy":"ignore","why":"our own team runs it"}
+	]}`)
+	code, stdout, _ := runCLI("check", "--expect", pol, serveRobots(t, served, 200))
+	if code != 1 {
+		t.Errorf("exit code = %d, expected 1: gptbot is not blocked by the deployed file", code)
+	}
+	if !strings.Contains(stdout, "bytespider") || !strings.Contains(stdout, "Allow: /") {
+		t.Errorf("a met expectation must show the line that meets it:\n%s", stdout)
+	}
+	if !strings.Contains(stdout, "gptbot") || !strings.Contains(stdout, "inherited from") {
+		t.Errorf("the divergence must say the answer came from the `*` group:\n%s", stdout)
+	}
+	if strings.Contains(stdout, "semrush") {
+		t.Error("an `ignore` rule is not an assertion: there is nothing to verify")
+	}
+	if !strings.Contains(stdout, "takes without giving") {
+		t.Errorf("the reason the expectation was written must be shown, so a reader knows whether to "+
+			"fix the file or the expectation:\n%s", stdout)
+	}
+}
+
+func TestCheckExpectPassesWhenTheFileAgrees(t *testing.T) {
+	served := "User-agent: bytespider\nAllow: /\n\nUser-agent: gptbot\nDisallow: /\n\nUser-agent: *\nDisallow:\n"
+	pol := writeTemp(t, "policy.json", `{"schema":"robotsmith.policy/1","rules":[
+	  {"pattern":"bytespider","policy":"allow"},
+	  {"pattern":"gptbot","policy":"block"}
+	]}`)
+	code, stdout, _ := runCLI("check", "--expect", pol, serveRobots(t, served, 200))
+	if code != 0 {
+		t.Errorf("exit code = %d, expected 0. stdout:\n%s", code, stdout)
+	}
+}
+
+func TestCheckExpectCannotSynthesiseAUAFromARegex(t *testing.T) {
+	// ⚠️ A pattern like `youbot|diffbot` is a fine matching rule and a nonsense user-agent. Testing
+	// it as a literal would produce a confident, meaningless verdict.
+	pol := writeTemp(t, "policy.json", `{"schema":"robotsmith.policy/1","rules":[{"pattern":"youbot|diffbot","policy":"block"}]}`)
+	code, stdout, stderr := runCLI("check", "--expect", pol, serveRobots(t, "User-agent: *\nDisallow:\n", 200))
+	if code != 0 {
+		t.Errorf("exit code = %d: nothing verifiable was asked for", code)
+	}
+	if !strings.Contains(stderr+stdout, "youbot|diffbot") {
+		t.Errorf("skipping must be said out loud:\n%s\n%s", stdout, stderr)
+	}
+}
+
+func TestCheckExpectReachesTheJSONDocument(t *testing.T) {
+	pol := writeTemp(t, "policy.json", `{"schema":"robotsmith.policy/1","rules":[{"pattern":"gptbot","policy":"block","why":"no visits"}]}`)
+	_, stdout, _ := runCLI("check", "--json", "--expect", pol, serveRobots(t, "User-agent: *\nDisallow:\n", 200))
+	var rep struct {
+		Expected []struct {
+			UA      string `json:"user_agent"`
+			Want    bool   `json:"want_allowed"`
+			Got     bool   `json:"got_allowed"`
+			Met     bool   `json:"met"`
+			Why     string `json:"why"`
+			ViaStar bool   `json:"via_star"`
+		} `json:"expected"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &rep); err != nil {
+		t.Fatal(err)
+	}
+	if len(rep.Expected) != 1 {
+		t.Fatalf("expected = %+v", rep.Expected)
+	}
+	e := rep.Expected[0]
+	if e.UA != "gptbot" || e.Want || !e.Got || e.Met || e.Why != "no visits" || !e.ViaStar {
+		t.Errorf("expected = %+v", e)
+	}
+}

@@ -133,15 +133,34 @@ func (r *RobotsTxt) groupFor(ua string) *Group {
 	return star
 }
 
+// Verdict is an answer with its reasoning attached: which group applied, which rule decided, and
+// whether the group was inherited from `*`. A verdict a reader cannot check is one they have to
+// trust, and `check --expect` quotes the deployed file's own line.
+type Verdict struct {
+	Allowed bool
+	Agent   string // the user-agent token as written in the file; "" when no group applied
+	Rule    *Rule  // the deciding rule; nil when nothing matched
+	ViaStar bool   // the group came from `*` rather than from a token for this crawler
+}
+
 // Allowed reports whether `path` is allowed for `ua`. Longest match wins; on equal length Allow
 // wins (RFC 9309 § 2.2.2). No applicable rule ⇒ allowed.
+//
+// It is a thin wrapper over Decide on purpose: two code paths answering the same question drift.
 func (r *RobotsTxt) Allowed(ua, path string) bool {
+	return r.Decide(ua, path).Allowed
+}
+
+// Decide is Allowed with the reasoning kept.
+func (r *RobotsTxt) Decide(ua, path string) Verdict {
 	g := r.groupFor(ua)
 	if g == nil {
-		return true
+		return Verdict{Allowed: true}
 	}
-	bestLen, allow := -1, true
-	for _, rule := range g.Rules {
+	v := Verdict{Allowed: true, Agent: agentAsWritten(g, ua)}
+	v.ViaStar = v.Agent == "*"
+	bestLen := -1
+	for i, rule := range g.Rules {
 		if rule.Pattern == "" {
 			continue // an empty `Disallow:` means "nothing is forbidden"
 		}
@@ -150,10 +169,33 @@ func (r *RobotsTxt) Allowed(ua, path string) bool {
 		}
 		l := effLen(rule.Pattern)
 		if l > bestLen || (l == bestLen && rule.Allow) {
-			bestLen, allow = l, rule.Allow
+			bestLen, v.Allowed, v.Rule = l, rule.Allow, &g.Rules[i]
 		}
 	}
-	return allow
+	return v
+}
+
+// agentAsWritten picks the token of the group that matched this crawler, in the spelling the file
+// uses: a report that renames somebody's token reads like the tool rewrote their file.
+func agentAsWritten(g *Group, ua string) string {
+	l := strings.ToLower(ua)
+	best, bestLen := "", -1
+	for i, a := range g.Agents {
+		raw := a
+		if i < len(g.AgentsRaw) {
+			raw = g.AgentsRaw[i]
+		}
+		if a == "*" {
+			if bestLen < 0 {
+				best, bestLen = "*", 0
+			}
+			continue
+		}
+		if strings.Contains(l, a) && len(a) > bestLen {
+			best, bestLen = raw, len(a)
+		}
+	}
+	return best
 }
 
 // effLen is the "useful" length of a pattern when comparing specificity: wildcards do not count.

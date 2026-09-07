@@ -15,6 +15,15 @@ consumers get exactly what a tag says. Pushing is always the maintainer's call, 
   unknown value, a broken pattern or a rule an earlier one already covers is an error (exit 2), and
   a missing file is exit 4 — falling back to the defaults would quietly apply the opinion the site
   explicitly rejected. JSON, not YAML: a YAML parser would be a dependency.
+- **`check --expect <file.json>`**: the same policy file, used to verify what got **deployed** —
+  per-decision pass/fail with the served file's own line quoted, and an explicit note when an answer
+  was merely *inherited from `*`* rather than written for that crawler. It **replaces** the built-in
+  cases: if you stated your policy, yours is the contract, because otherwise a deliberate exception
+  would fail a built-in case forever and a check that is red by design stops being read. `review`
+  and `ignore` rules are not assertions and are skipped; so is a regex pattern, out loud.
+- `matcher.Decide` returns a verdict with its reasoning — the deciding rule, its line, the group as
+  spelled in the file, and whether it came from `*`. `Allowed` is now a thin wrapper over it, so the
+  two cannot drift.
 - **A GitHub Action** ([action.yml](action.yml)): three lines to put robotsmith in a pipeline.
   Composite, not Docker — it downloads the release binary for the runner and **verifies it against
   the release's own `checksums.txt`** before running it. Exposes `exit-code` and `output` so a later

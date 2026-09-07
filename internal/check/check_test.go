@@ -238,3 +238,54 @@ func TestRunIsStillTheOneArgumentForm(t *testing.T) {
 		t.Errorf("problems = %v", res.Problems)
 	}
 }
+
+func TestExpectVerifiesTheDecisionsSomebodyActuallyMade(t *testing.T) {
+	// `check` verifies a fixed set of cases. This verifies THIS site's decisions — which is what
+	// somebody silently reverts by regenerating the file from a copied list.
+	body := "User-agent: Bytespider\nAllow: /\n\nUser-agent: GPTBot\nDisallow: /\n\nUser-agent: *\nDisallow: /admin/\n"
+	res, err := RunWith(Options{URL: serve(t, body, 200), Path: "/", Expect: []Expectation{
+		{UA: "Bytespider", Allow: true, Why: "we license our content to them"},
+		{UA: "GPTBot", Allow: false, Why: "takes without giving"},
+		{UA: "CCBot", Allow: false, Why: "same"},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Expected) != 3 {
+		t.Fatalf("expected one result per expectation, got %+v", res.Expected)
+	}
+	byUA := map[string]ExpectResult{}
+	for _, e := range res.Expected {
+		byUA[e.UA] = e
+	}
+	if !byUA["Bytespider"].Met || !byUA["GPTBot"].Met {
+		t.Errorf("both stated decisions are honoured by the file: %+v", res.Expected)
+	}
+	// The quoted line is the point: a verdict a reader cannot check is one they must trust.
+	if byUA["GPTBot"].Line == 0 || !strings.Contains(byUA["GPTBot"].Quote, "Disallow: /") {
+		t.Errorf("GPTBot = %+v, expected the deployed file's own line quoted", byUA["GPTBot"])
+	}
+	// CCBot was never mentioned in the file: it falls through to `*`, which allows it. The
+	// expectation said it must be blocked, so this is a divergence — and it must be visible as
+	// "inherited from *", not as a rule somebody wrote.
+	cc := byUA["CCBot"]
+	if cc.Met {
+		t.Error("CCBot is allowed by the file but was expected blocked")
+	}
+	if !cc.ViaStar {
+		t.Errorf("CCBot = %+v: the report must say the answer came from the * group", cc)
+	}
+	if !strings.Contains(strings.Join(res.Problems, " "), "CCBot") {
+		t.Errorf("a divergence must reach the verdict: %v", res.Problems)
+	}
+}
+
+func TestExpectIsOffUnlessAsked(t *testing.T) {
+	res, err := Run(serve(t, healthy, 200), "", "/")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Expected) != 0 {
+		t.Errorf("no expectations were given: %+v", res.Expected)
+	}
+}

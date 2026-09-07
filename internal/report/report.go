@@ -54,6 +54,21 @@ type CheckDoc struct {
 	// Sitemaps appears only when --sitemaps asked for it. Adding an optional field is not a
 	// breaking change, so the schema stays at /1.
 	Sitemaps []Sitemap `json:"sitemaps,omitempty"`
+	// Expected appears only when --expect asked for it: the site's own decisions, verified.
+	Expected []Expected `json:"expected,omitempty"`
+}
+
+// Expected is one stated decision checked against the served file.
+type Expected struct {
+	UA      string `json:"user_agent"`
+	Want    bool   `json:"want_allowed"`
+	Got     bool   `json:"got_allowed"`
+	Met     bool   `json:"met"`
+	Why     string `json:"why,omitempty"`
+	Agent   string `json:"deciding_group,omitempty"`
+	Quote   string `json:"deciding_rule,omitempty"`
+	Line    int    `json:"line,omitempty"`
+	ViaStar bool   `json:"via_star,omitempty"`
 }
 
 // Sitemap is one `Sitemap:` line and what it answered.
@@ -155,6 +170,10 @@ func FromCheck(res *check.Result, path string, findings []lint.Finding) CheckDoc
 		Deindex:  res.Deindex,
 		Problems: strings2(res.Problems),
 		Findings: findings2(findings),
+	}
+	for _, e := range res.Expected {
+		d.Expected = append(d.Expected, Expected{UA: e.UA, Want: e.Want, Got: e.Got, Met: e.Met,
+			Why: e.Why, Agent: e.Agent, Quote: e.Quote, Line: e.Line, ViaStar: e.ViaStar})
 	}
 	for _, sm := range res.Sitemaps {
 		d.Sitemaps = append(d.Sitemaps, Sitemap{URL: sm.URL, Status: sm.Status,

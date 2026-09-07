@@ -141,6 +141,10 @@ func usageText() string {
       to find out whether a CDN is still serving an old version.
       --sitemaps also asks every Sitemap: URL whether it answers (off by default:
       a verification must not make network calls nobody asked for).
+      --expect takes the same policy file as "advise --policy" and verifies THIS
+      site's decisions against what is served, quoting the file's own lines. It
+      REPLACES the built-in cases: if you stated your policy, yours is the
+      contract (otherwise a deliberate exception would be red forever).
 
   robotsmith lint   <file|url> [--strict] [--format text|json|github]
       Structural defects: empty file, orphan rules after a blank line,
@@ -240,8 +244,8 @@ func takesValue(f string) bool {
 // checkOpts, lintOpts and adviseOpts exist so flag registration lives in one place per command:
 // the documentation gate walks these flag sets, so a new flag is documented or CI goes red.
 type checkOpts struct {
-	origin, path, format    string
-	quiet, asJSON, sitemaps bool
+	origin, path, format, expect string
+	quiet, asJSON, sitemaps      bool
 }
 
 func checkFlags(errw io.Writer) (*flag.FlagSet, *checkOpts) {
@@ -252,6 +256,7 @@ func checkFlags(errw io.Writer) (*flag.FlagSet, *checkOpts) {
 	fs.BoolVar(&o.quiet, "quiet", false, "print the verdict only")
 	fs.BoolVar(&o.sitemaps, "sitemaps", false, "also check that every Sitemap: URL answers (makes network calls)")
 	fs.StringVar(&o.format, "format", "text", "output shape: text, json or github (workflow annotations)")
+	fs.StringVar(&o.expect, "expect", "", "policy file whose decisions must hold in the served file")
 	fs.BoolVar(&o.asJSON, "json", false, "shorthand for --format json")
 	return fs, o
 }
@@ -316,8 +321,19 @@ func cmdCheck(args []string, out, errw io.Writer) int {
 		fmt.Fprintln(errw, "invalid URL:", err)
 		return 2
 	}
+	var expect []check.Expectation
+	if opt.expect != "" {
+		if expect, err = expectationsFrom(opt.expect, errw); err != nil {
+			if os.IsNotExist(err) {
+				fmt.Fprintln(errw, "[4]", err)
+				return 4
+			}
+			fmt.Fprintln(errw, err)
+			return 2
+		}
+	}
 	res, err := check.RunWith(check.Options{URL: u, Origin: opt.origin, Path: opt.path,
-		Sitemaps: opt.sitemaps})
+		Sitemaps: opt.sitemaps, Expect: expect, ExpectOnly: opt.expect != ""})
 	if err != nil {
 		fmt.Fprintln(errw, "[4]", err)
 		return 4
@@ -352,6 +368,29 @@ func cmdCheck(args []string, out, errw io.Writer) int {
 		for _, sm := range res.Sitemaps {
 			fmt.Fprintf(out, "  sitemap %s — HTTP %d, %s, %s\n", sm.URL, sm.Status, sm.ContentType,
 				humanBytes(sm.Bytes))
+		}
+		for _, e := range res.Expected {
+			mark, want := "✅", "allowed"
+			if !e.Met {
+				mark = "⛔"
+			}
+			if !e.Want {
+				want = "blocked"
+			}
+			line := fmt.Sprintf("  %s %-24s must be %-7s — ", mark, e.UA, want)
+			switch {
+			case e.Quote != "":
+				line += fmt.Sprintf("`%s` (line %d, group `%s`)", e.Quote, e.Line, e.Agent)
+			default:
+				line += "no rule in the file mentions it"
+			}
+			if e.ViaStar {
+				line += ", inherited from `*`"
+			}
+			if e.Why != "" {
+				line += "\n" + fmt.Sprintf("%29sbecause: %s", "", e.Why)
+			}
+			fmt.Fprintln(out, line)
 		}
 	}
 	if len(res.Problems) == 0 {
@@ -621,6 +660,38 @@ func printDiff(out, errw io.Writer, a *advise.Advice, existing, host string) int
 	}
 	fmt.Fprintln(out, "\n+ added   ! the file says the opposite   ~ kept verbatim (not advised here)")
 	return 0
+}
+
+// expectationsFrom turns a policy file into the decisions to verify. `review` and `ignore` are not
+// assertions — there is nothing to check — so only allow/block become expectations.
+//
+// ⚠️ The pattern doubles as the user-agent to test, which works for a literal token and cannot work
+// for a real regex (`youbot|diffbot` is a fine matching rule and a nonsense UA). Those are skipped
+// out loud: a confident verdict on a synthesised UA would be worse than no verdict.
+func expectationsFrom(path string, errw io.Writer) ([]check.Expectation, error) {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	p, err := policy.Parse(b, path)
+	if err != nil {
+		return nil, err
+	}
+	var out []check.Expectation
+	for _, r := range p.Rules {
+		switch r.Policy {
+		case advise.Allow, advise.Block:
+		default:
+			continue
+		}
+		if strings.ContainsAny(r.Pattern, `|()[]{}*+?^$\`) {
+			fmt.Fprintf(errw, "skipping %q: a regex cannot be used as a user-agent to test — "+
+				"give the literal token you want verified\n", r.Pattern)
+			continue
+		}
+		out = append(out, check.Expectation{UA: r.Pattern, Allow: r.Policy == advise.Allow, Why: r.Why})
+	}
+	return out, nil
 }
 
 // read accepts a local path or a URL.

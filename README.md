@@ -192,6 +192,7 @@ robotsmith advise --ua-counts ua.txt
 |---|---|---|
 | `check` | `--origin <url>` | compares the public copy with the origin — the only reliable way to catch a stale CDN copy |
 | `check` | `--path <path>` | the path the expected cases are evaluated against (default `/`) |
+| `check` | `--expect <file.json>` | verify **this site's** decisions (the same policy file) against what is served; replaces the built-in cases |
 | `check` | `--sitemaps` | also ask every `Sitemap:` URL whether it answers — off by default, because a verification must not make network calls nobody asked for |
 | `check` | `--quiet` | print the verdict only |
 | `lint` | `--strict` | make warnings fail too, for a file that must be correct under a first-match parser as well |
@@ -233,6 +234,23 @@ that fired and the file it came from, so a decision can be argued with:
 ```
   ALLOW    Bytespider              13.02%  we license our content to them [policy.json: bytespider]
 ```
+
+The same file closes the loop. `advise --policy` decides, you deploy, and `check --expect` verifies
+what the origin actually serves — quoting the deployed file's own lines, and saying when an answer
+was merely **inherited from `*`** rather than written for that crawler:
+
+```
+$ robotsmith check example.com --expect policy.json
+  ✅ bytespider               must be allowed — `Allow: /` (line 2, group `bytespider`)
+  ⛔ gptbot                   must be blocked — no rule in the file mentions it, inherited from `*`
+                             because: takes without giving
+```
+
+⚠️ `--expect` **replaces** the built-in cases: if you stated your policy, yours is the contract —
+otherwise a deliberate exception (allowing a training crawler you have a deal with) would fail a
+built-in case forever, and a check that is red by design is one people stop reading. `review` and
+`ignore` rules are not assertions, so they are skipped; so is a regex pattern, out loud, because
+`youbot|diffbot` is a fine matching rule and a nonsense user-agent.
 
 ⚠️ The file is **strict**: an unknown key, an unknown value, a broken pattern or a rule that an
 earlier one already covers is an error, not a warning. A policy file that half-works reads like an

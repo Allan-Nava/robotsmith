@@ -204,6 +204,15 @@ carries the paths and the timestamps, and the tool was throwing them away. It sh
 for the decisions a person has to take, and **only** from a real log — a `uniq -c` count cannot know
 them, and inventing them would be worse than omitting them.
 
+### Your expectations replace the defaults, they do not stack on them
+`check --expect` verifies the decisions a team actually made. Making those *additional* to the
+built-in 32 cases was the tempting design and the wrong one: a site that deliberately allows a
+training crawler it has a deal with would fail a built-in case forever, and a check that is red by
+design is one people stop reading — the same failure as a job that fails on something nobody can
+fix. So stating a policy means adopting it as the contract. The report quotes the deployed file's own
+line for every verdict, and says when an answer was merely inherited from `*`: "your rule matched"
+and "you inherited the catch-all" are different facts, and only one of them is a decision.
+
 ### The policy file is strict, and says whose answer it is
 Making the table overridable was the easy half. The half that matters: every decision now carries
 the rule that produced it and whether that rule came from the site's file or from the defaults,

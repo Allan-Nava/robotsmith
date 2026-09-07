@@ -41,6 +41,8 @@ type Result struct {
 	Deindex  bool // at least one search engine is blocked: the only urgent case
 	// Sitemaps is filled only when Options.Sitemaps asked for it: see SitemapReport.
 	Sitemaps []SitemapReport
+	// Expected is filled only when Options.Expect asked for it: see ExpectResult.
+	Expected []ExpectResult
 }
 
 // SitemapReport is what one `Sitemap:` line actually answers. `lint` checks the host, which catches
@@ -62,6 +64,37 @@ type Options struct {
 	Origin   string
 	Path     string
 	Sitemaps bool
+	// Expect closes the loop advise → deploy → verify: the decisions THIS site made, checked
+	// against what it actually serves. The built-in cases cannot do that — they do not know which
+	// four crawlers a team decided to block and why.
+	Expect []Expectation
+	// ExpectOnly replaces the built-in cases with the stated expectations.
+	//
+	// ⚠️ This is the point of bringing your own policy, not a shortcut: a site that deliberately
+	// allows a training crawler would fail the built-in case forever, and a check that is red by
+	// design is one people stop reading. If you stated your decisions, yours are the contract.
+	ExpectOnly bool
+}
+
+// Expectation is one decision somebody made, in the shape it can be verified in.
+type Expectation struct {
+	UA    string
+	Allow bool
+	Why   string
+}
+
+// ExpectResult is that decision checked against the served file, with the file's own line quoted:
+// a verdict a reader cannot check is a verdict they have to trust.
+type ExpectResult struct {
+	UA      string
+	Want    bool
+	Got     bool
+	Met     bool
+	Why     string
+	Agent   string // the group that decided, as spelled in the file
+	Quote   string // the deciding line, verbatim
+	Line    int
+	ViaStar bool // the answer was inherited from `*`, not written for this crawler
 }
 
 var client = &http.Client{Timeout: 20 * time.Second}
@@ -127,24 +160,39 @@ func RunWith(o Options) (*Result, error) {
 	if path == "" {
 		path = "/"
 	}
-	for _, ua := range MustPass {
-		r.Cases++
-		if !rt.Allowed(ua, path) {
-			r.Failed++
-			msg := fmt.Sprintf("`%s` is BLOCKED but must get through", ua)
-			if isSearchEngine(ua) {
-				msg += " — ⛔ DEINDEXING RISK"
-				r.Deindex = true
-			}
-			r.Problems = append(r.Problems, msg)
-		}
+	if !o.ExpectOnly {
+		verifyBuiltIn(r, rt, path)
 	}
-	for _, ua := range MustBeBlocked {
+	for _, e := range o.Expect {
 		r.Cases++
-		if rt.Allowed(ua, path) {
-			r.Failed++
-			r.Problems = append(r.Problems, fmt.Sprintf("`%s` gets through but should be blocked", ua))
+		v := rt.Decide(e.UA, path)
+		res := ExpectResult{UA: e.UA, Want: e.Allow, Got: v.Allowed, Met: v.Allowed == e.Allow,
+			Why: e.Why, Agent: v.Agent, ViaStar: v.ViaStar}
+		if v.Rule != nil {
+			verb := "Disallow: "
+			if v.Rule.Allow {
+				verb = "Allow: "
+			}
+			res.Quote, res.Line = verb+v.Rule.Pattern, v.Rule.Line
 		}
+		r.Expected = append(r.Expected, res)
+		if res.Met {
+			continue
+		}
+		r.Failed++
+		want := "blocked"
+		if e.Allow {
+			want = "allowed"
+		}
+		how := "no rule in the file mentions it"
+		if res.Quote != "" {
+			how = fmt.Sprintf("`%s` decides it (line %d, group `%s`)", res.Quote, res.Line, res.Agent)
+		}
+		if res.ViaStar {
+			how += " — inherited from `*`, not written for this crawler"
+		}
+		r.Problems = append(r.Problems, fmt.Sprintf(
+			"`%s` must be %s and is not: %s%s", e.UA, want, how, whySuffix(e.Why)))
 	}
 	if o.Sitemaps {
 		for _, sm := range rt.Sitemaps {
@@ -185,6 +233,38 @@ func fetchSitemap(u string) SitemapReport {
 		rep.Problem = "answers 200 with an empty body"
 	}
 	return rep
+}
+
+// verifyBuiltIn runs the expected cases: the default opinion, for a site that has not stated one.
+func verifyBuiltIn(r *Result, rt *matcher.RobotsTxt, path string) {
+	for _, ua := range MustPass {
+		r.Cases++
+		if !rt.Allowed(ua, path) {
+			r.Failed++
+			msg := fmt.Sprintf("`%s` is BLOCKED but must get through", ua)
+			if isSearchEngine(ua) {
+				msg += " — ⛔ DEINDEXING RISK"
+				r.Deindex = true
+			}
+			r.Problems = append(r.Problems, msg)
+		}
+	}
+	for _, ua := range MustBeBlocked {
+		r.Cases++
+		if rt.Allowed(ua, path) {
+			r.Failed++
+			r.Problems = append(r.Problems, fmt.Sprintf("`%s` gets through but should be blocked", ua))
+		}
+	}
+}
+
+// whySuffix appends the reason the expectation was written down, when there is one: it is the part
+// that tells whoever reads the failure whether to fix the file or the expectation.
+func whySuffix(why string) string {
+	if why == "" {
+		return ""
+	}
+	return " (expected because: " + why + ")"
 }
 
 func isSearchEngine(ua string) bool {
