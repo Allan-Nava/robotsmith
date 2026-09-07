@@ -155,7 +155,8 @@ func usageText() string {
       which is what the bundled action uses (--json is --format json).
 
   robotsmith advise --log <access.log|-> | --ua-counts <file> [--current <file|url>]
-                    [--host <host>] [--out <file>] [--diff] [--policy <file.json>] [--json]
+                    [--host <host>] [--out <file>] [--diff] [--policy <file.json>]
+                    [--compare <previous.json>] [--json]
       ADVISES the file starting from the observed traffic, and explains why.
       --log accepts "-" for stdin and transparently reads gzipped logs, and is the
       only input that can show WHICH paths an unknown crawler asked for.
@@ -163,6 +164,9 @@ func usageText() string {
       whole file: reviewing is what decides whether the advice gets applied.
       --policy takes a JSON file with this site's own answers where it disagrees
       with the built-in table; the reasoning then says which rule of yours fired.
+      --compare takes a stored --json document from an earlier run and reports
+      what moved: a share is a snapshot, and the decision usually hinges on the
+      direction. A small crawler growing fast is raised for review.
       --ua-counts accepts the output of "... | sort | uniq -c" (count + user-agent).
 
   robotsmith crawlers [--json]
@@ -285,8 +289,8 @@ func lintFlags(errw io.Writer) (*flag.FlagSet, *lintOpts) {
 }
 
 type adviseOpts struct {
-	logFile, uaCounts, current, host, outFile, policyFile string
-	asJSON, diff                                          bool
+	logFile, uaCounts, current, host, outFile, policyFile, compare string
+	asJSON, diff                                                   bool
 }
 
 func adviseFlags(errw io.Writer) (*flag.FlagSet, *adviseOpts) {
@@ -297,6 +301,7 @@ func adviseFlags(errw io.Writer) (*flag.FlagSet, *adviseOpts) {
 	fs.StringVar(&o.current, "current", "", "current robots.txt (file or URL): its rules are preserved")
 	fs.StringVar(&o.host, "host", "", "host of the site, to validate the Sitemap line")
 	fs.StringVar(&o.policyFile, "policy", "", "JSON policy file: this site's answer where it disagrees with the defaults")
+	fs.StringVar(&o.compare, "compare", "", "a stored --json document from an earlier run: report what moved")
 	fs.StringVar(&o.outFile, "out", "", "write the advised file here instead of on stdout")
 	fs.BoolVar(&o.diff, "diff", false, "review what would change against --current, instead of printing the file")
 	fs.BoolVar(&o.asJSON, "json", false, "emit a machine-readable document on stdout")
@@ -540,6 +545,19 @@ func cmdAdvise(args []string, out, errw io.Writer) int {
 		override = p
 	}
 
+	var previous *advise.Snapshot
+	if opt.compare != "" {
+		b, err := os.ReadFile(opt.compare)
+		if err != nil {
+			fmt.Fprintln(errw, "[4]", err)
+			return 4
+		}
+		if previous, err = report.SnapshotFrom(b, opt.compare); err != nil {
+			fmt.Fprintln(errw, err)
+			return 2
+		}
+	}
+
 	var obs []advise.Observation
 	var err error
 	switch {
@@ -563,7 +581,7 @@ func cmdAdvise(args []string, out, errw io.Writer) int {
 		}
 	}
 
-	a := advise.AnalyzeWith(obs, advise.Options{Override: override})
+	a := advise.AnalyzeWith(obs, advise.Options{Override: override, Previous: previous})
 	text := advise.Render(a, existing, opt.host)
 
 	if opt.diff {
@@ -608,6 +626,22 @@ func cmdAdvise(args []string, out, errw io.Writer) int {
 		} else if !d.Evidence.First.IsZero() {
 			fmt.Fprintf(errw, "      all within one timestamp (%s): a burst\n",
 				d.Evidence.First.Format("2006-01-02 15:04"))
+		}
+	}
+	if c := a.Comparison; c != nil {
+		fmt.Fprintf(errw, "\nAgainst the previous run (%s requests):\n", thousandsSep(c.PreviousTotal))
+		for _, m := range c.Movements {
+			if m.Direction == advise.Steady {
+				continue // a review shows what moved
+			}
+			line := fmt.Sprintf("  %-9s %-22s %5.2f%% → %5.2f%%", m.Direction, m.Name, m.Was, m.Now)
+			if m.Factor > 0 {
+				line += fmt.Sprintf("  (×%.3g)", m.Factor)
+			}
+			if m.Direction == advise.Vanished {
+				line += "  — a rule still blocking it does nothing"
+			}
+			fmt.Fprintln(errw, line)
 		}
 	}
 	if a.Saving > 0 {
@@ -901,6 +935,19 @@ func isRequestLine(s string) bool {
 		}
 	}
 	return false
+}
+
+// thousandsSep groups digits so a request count is readable at a glance.
+func thousandsSep(n int64) string {
+	s := fmt.Sprintf("%d", n)
+	var out []byte
+	for i, c := range []byte(s) {
+		if i > 0 && (len(s)-i)%3 == 0 {
+			out = append(out, ',')
+		}
+		out = append(out, c)
+	}
+	return string(out)
 }
 
 // humanBytes keeps a size readable at a glance: a sitemap is either a few KB or tens of MB, and

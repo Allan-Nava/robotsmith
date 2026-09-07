@@ -577,3 +577,86 @@ func TestCheckExpectReachesTheJSONDocument(t *testing.T) {
 		t.Errorf("expected = %+v", e)
 	}
 }
+
+func TestAdviseCompareReportsTheMovement(t *testing.T) {
+	// A stored --json document is the previous run: no new file format to learn.
+	prev := writeTemp(t, "prev.json", `{
+	  "schema": "robotsmith.advise/1",
+	  "total_requests": 100000,
+	  "decisions": [
+	    {"name":"GPTBot","policy":"block","requests":2000,"share":2.0},
+	    {"name":"OldBot","policy":"block","requests":3000,"share":3.0}
+	  ]
+	}`)
+	counts := writeTemp(t, "ua.txt", "8000 Mozilla/5.0 (compatible; GPTBot/1.4)\n92000 Mozilla/5.0 (Windows NT 10.0) Chrome/148\n")
+	code, _, stderr := runCLI("advise", "--ua-counts", counts, "--compare", prev)
+	if code != 0 {
+		t.Fatalf("exit code = %d, stderr: %s", code, stderr)
+	}
+	if !strings.Contains(stderr, "GPTBot") || !strings.Contains(stderr, "grew") {
+		t.Errorf("GPTBot went 2%% → 8%%: that must be reported as growth:\n%s", stderr)
+	}
+	if !strings.Contains(stderr, "OldBot") || !strings.Contains(stderr, "vanished") {
+		t.Errorf("a crawler that stopped coming must be reported: a rule still blocking it is "+
+			"stale and nobody notices a rule that does nothing:\n%s", stderr)
+	}
+}
+
+func TestAdviseCompareRefusesAWrongDocument(t *testing.T) {
+	counts := writeTemp(t, "ua.txt", "10 Mozilla/5.0 (compatible; GPTBot/1.4)\n")
+	for name, body := range map[string]string{
+		"a lint document": `{"schema":"robotsmith.lint/1","findings":[]}`,
+		"a future schema": `{"schema":"robotsmith.advise/9","decisions":[]}`,
+		"not a document":  `{}`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			bad := writeTemp(t, "prev.json", body)
+			code, _, stderr := runCLI("advise", "--ua-counts", counts, "--compare", bad)
+			if code != 2 {
+				t.Errorf("exit code = %d, expected 2: comparing against the wrong document would "+
+					"invent a trend", code)
+			}
+			if stderr == "" {
+				t.Error("it must say why")
+			}
+		})
+	}
+}
+
+func TestAdviseCompareReachesTheJSONDocument(t *testing.T) {
+	prev := writeTemp(t, "prev.json", `{"schema":"robotsmith.advise/1","total_requests":100000,
+	  "decisions":[{"name":"GPTBot","policy":"block","requests":2000,"share":2.0}]}`)
+	counts := writeTemp(t, "ua.txt", "8000 Mozilla/5.0 (compatible; GPTBot/1.4)\n92000 Mozilla/5.0 (Windows NT 10.0) Chrome/148\n")
+	_, stdout, _ := runCLI("advise", "--json", "--ua-counts", counts, "--compare", prev)
+	var rep struct {
+		Comparison *struct {
+			PreviousTotal int64 `json:"previous_total_requests"`
+			Movements     []struct {
+				Name      string  `json:"name"`
+				Direction string  `json:"direction"`
+				Was       float64 `json:"was_share"`
+				Now       float64 `json:"now_share"`
+				Factor    float64 `json:"factor"`
+			} `json:"movements"`
+		} `json:"comparison"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &rep); err != nil {
+		t.Fatal(err)
+	}
+	if rep.Comparison == nil || rep.Comparison.PreviousTotal != 100000 {
+		t.Fatalf("comparison = %+v", rep.Comparison)
+	}
+	var found bool
+	for _, m := range rep.Comparison.Movements {
+		if m.Name != "GPTBot" {
+			continue
+		}
+		found = true
+		if m.Direction != "grew" || m.Was != 2.0 || m.Now != 8.0 || m.Factor != 4.0 {
+			t.Errorf("movement = %+v", m)
+		}
+	}
+	if !found {
+		t.Errorf("movements = %+v", rep.Comparison.Movements)
+	}
+}

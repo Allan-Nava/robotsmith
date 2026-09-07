@@ -272,6 +272,8 @@ type Advice struct {
 	// Warnings are the cases robots.txt CANNOT solve.
 	Warnings []string
 	Total    int64
+	// Comparison is present only when a previous run was given.
+	Comparison *Comparison
 }
 
 // MinCandidateShare is the share below which an unknown crawler is not worth a line in the file:
@@ -291,6 +293,9 @@ type Override interface {
 type Options struct {
 	// Override, when set, wins over the built-in table: that is the whole point of the file.
 	Override Override
+	// Previous, when set, is an earlier run to compare against — which is what turns a share into
+	// a direction.
+	Previous *Snapshot
 }
 
 // Analyze applies the algorithm with no overrides — the call everything already makes.
@@ -311,6 +316,9 @@ func AnalyzeWith(obs []Observation, opt Options) *Advice {
 	// total share of traffic declaring a browser UA: used only to say how much of the traffic this
 	// command CANNOT judge (see the closing warning)
 	var browserShare float64
+	// seen records every named crawler's share, including the ones the algorithm ignores: a
+	// comparison must be able to say "this one shrank to nothing", not just drop it.
+	seen := map[string]float64{}
 
 	for _, o := range obs {
 		fam, name := Classify(o.UA)
@@ -342,8 +350,19 @@ func AnalyzeWith(obs []Observation, opt Options) *Advice {
 				}
 			}
 		}
-		if pol == Ignore {
+		if name == "" {
+			name = firstToken(o.UA)
+		}
+		if name != "" {
+			seen[name] += share
+		}
+		if pol == Ignore && !promote(opt, name, fam, share) {
 			continue
+		}
+		if pol == Ignore {
+			// Promoted: too small for a line on volume alone, but growing fast enough to look at.
+			was := opt.Previous.Shares[name]
+			pol, why = Candidate, growthReason(was, share, share/was)
 		}
 		if name == "" {
 			continue // we would not know what to write in the file
@@ -375,6 +394,9 @@ func AnalyzeWith(obs []Observation, opt Options) *Advice {
 		}
 		return a.Decisions[i].Requests > a.Decisions[j].Requests
 	})
+	if opt.Previous != nil {
+		a.Comparison = compare(opt.Previous, a.Decisions, seen)
+	}
 	// ⚠️ An honest warning, not an accusation: a browser UA with a high share is NORMAL (behind one
 	// string there are thousands of people). The point is that disguised scrapers hide exactly
 	// there, and telling them apart needs the PER-IP RATE — which this command does not look at.
@@ -387,6 +409,20 @@ func AnalyzeWith(obs []Observation, opt Options) *Advice {
 			browserShare))
 	}
 	return a
+}
+
+// promote reports whether a crawler the volume rules would ignore should be raised for review
+// anyway, because it is growing. Only for unrecognised crawlers: a browser or a monitor growing is
+// not a robots.txt decision.
+func promote(opt Options, name string, fam Family, share float64) bool {
+	if opt.Previous == nil || fam != Unknown || name == "" {
+		return false
+	}
+	was, ok := opt.Previous.Shares[name]
+	if !ok || was <= 0 {
+		return false
+	}
+	return share/was >= GrowthPromotion
 }
 
 func policyFor(fam Family, share float64) (Policy, string) {

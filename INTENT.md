@@ -204,6 +204,20 @@ carries the paths and the timestamps, and the tool was throwing them away. It sh
 for the decisions a person has to take, and **only** from a real log — a `uniq -c` count cannot know
 them, and inventing them would be worse than omitting them.
 
+### A share is a snapshot; the decision is about the direction
+The volume thresholds answer "how much does this cost today", which is the wrong question for
+anything small. Two crawlers at 0.4% — one flat for a year, one quadrupled this month — got the same
+"leave it commented" answer, and the second is the one worth acting on. Comparing needs no new file
+format: the `--json` document already published everything a baseline requires, so the previous run
+*is* the baseline. Two guards keep it honest: the movement threshold (±25%) exists so ordinary
+wobble is not reported as a trend, because a report that cries trend teaches the reader to skim; and
+the document is refused unless it is an advise document of a known schema, since comparing against
+the wrong one would invent a trend, and a trend is what somebody acts on.
+
+Vanished crawlers are reported for the opposite reason: a rule that no longer does anything costs
+nothing today and is invisible for years. Nobody audits a robots.txt for rules that have stopped
+mattering.
+
 ### Your expectations replace the defaults, they do not stack on them
 `check --expect` verifies the decisions a team actually made. Making those *additional* to the
 built-in 32 cases was the tempting design and the wrong one: a site that deliberately allows a

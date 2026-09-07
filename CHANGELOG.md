@@ -15,6 +15,13 @@ consumers get exactly what a tag says. Pushing is always the maintainer's call, 
   unknown value, a broken pattern or a rule an earlier one already covers is an error (exit 2), and
   a missing file is exit 4 — falling back to the defaults would quietly apply the opinion the site
   explicitly rejected. JSON, not YAML: a YAML parser would be a dependency.
+- **`advise --compare <previous.json>`**: a stored `--json` document from an earlier run becomes the
+  baseline, and the report says what **grew, shrank, appeared or vanished**, with the factor. A
+  crawler still too small to earn a line but growing past **×2** is raised for review with the
+  growth as its reason — a share alone cannot tell 0.4% flat for a year from 0.4% quadrupling this
+  month, and only the second is a decision. A crawler that vanished is reported too: a rule that no
+  longer does anything is invisible until somebody audits the file. The document must be an advise
+  one of a known schema, or the comparison would invent a trend.
 - **`check --expect <file.json>`**: the same policy file, used to verify what got **deployed** —
   per-decision pass/fail with the served file's own line quoted, and an explicit note when an answer
   was merely *inherited from `*`* rather than written for that crawler. It **replaces** the built-in

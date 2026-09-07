@@ -202,6 +202,7 @@ robotsmith advise --ua-counts ua.txt
 | `advise` | `--host <host>` | the site's host, used to validate the `Sitemap:` line |
 | `advise` | `--out <file>` | write the advised file there instead of stdout |
 | `advise` | `--diff` | review what would change against `--current`, instead of printing the whole file |
+| `advise` | `--compare <previous.json>` | a stored `--json` document from an earlier run: report what grew, shrank, appeared or vanished |
 | `advise` | `--policy <file.json>` | this site's own answers where it disagrees with the built-in table (see below) |
 | `check`, `lint` | `--format <text\|json\|github>` | the shape of the answer; `github` emits workflow annotations on the offending lines |
 | all four | `--json` | shorthand for `--format json` (kept: pipelines pin it) |
@@ -209,6 +210,30 @@ robotsmith advise --ua-counts ua.txt
 
 The flag table above is checked against the binary by a test: a flag that exists and is not
 documented — or documented and no longer exposed — fails the build.
+
+### Direction, not just a snapshot
+
+A share tells you how much a crawler costs today. The decision usually hinges on where it is going:
+0.4% flat for a year and 0.4% quadrupling this month get the same answer from a share alone, and
+only the second one is worth acting on. `--compare` takes a stored `--json` document from an earlier
+run — no new file format to learn:
+
+```
+$ robotsmith advise --log access.log --compare last-month.json
+Against the previous run (182,761 requests):
+  grew      Bytespider              1.00% →  4.10%  (×4.1)
+  shrank    GPTBot                  2.00% →  0.80%  (×0.4)
+  appeared  NewSpider               0.00% →  2.00%
+  vanished  OldBot                  3.00% →  0.00%  — a rule still blocking it does nothing
+```
+
+A crawler still too small to earn a line, but **growing past ×2**, is raised for review with the
+growth as its reason. And a crawler that stopped coming is reported too: a rule that no longer does
+anything is invisible until somebody audits the file.
+
+⚠️ The document must be an `advise` one of a schema this build understands — comparing against a
+`lint` document, or against a future schema where `share` might mean something else, would invent a
+trend, and a trend is what somebody acts on.
 
 ### Your own policy, written down
 

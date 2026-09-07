@@ -310,6 +310,21 @@ robotsmith advise --ua-counts ua.txt</code></pre>
   </tbody>
 </table>
 
+<h3>Direction, not just a snapshot</h3>
+<p>A share says what a crawler costs today; the decision usually hinges on where it is going. 0.4%
+flat for a year and 0.4% quadrupling this month get the same answer from a share alone — and only
+the second is worth acting on. <code>--compare</code> takes a stored <code>--json</code> document
+from an earlier run, so there is no new file format to learn.</p>
+<pre><code>$ robotsmith advise --log access.log --compare last-month.json
+Against the previous run (182,761 requests):
+  grew      Bytespider              1.00% →  4.10%  (×4.1)
+  shrank    GPTBot                  2.00% →  0.80%  (×0.4)
+  appeared  NewSpider               0.00% →  2.00%
+  vanished  OldBot                  3.00% →  0.00%  — a rule still blocking it does nothing</code></pre>
+<p class="sub">A crawler too small to earn a line but growing past ×2 is raised for review with the
+growth as its reason. Vanished ones are reported for the opposite reason: a rule that no longer does
+anything is invisible until somebody audits the file.</p>
+
 <h3>Your own policy, written down</h3>
 <p>The classification table is an opinion. <code>--policy</code> makes disagreeing cheap and, more
 importantly, written down — first match wins, as in the built-in table:</p>

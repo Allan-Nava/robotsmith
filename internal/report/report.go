@@ -11,6 +11,7 @@ package report
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"time"
 
@@ -130,6 +131,8 @@ type AdviseDoc struct {
 	Decisions   []Decision `json:"decisions"`
 	Warnings    []string   `json:"warnings"`
 	RobotsTxt   string     `json:"robots_txt"`
+	// Comparison is present only when an earlier run was given to compare against.
+	Comparison *Comparison `json:"comparison,omitempty"`
 }
 
 // Rule is one classification rule as published by `crawlers`.
@@ -156,6 +159,49 @@ func FromRules(in []advise.RuleInfo) CrawlersDoc {
 			Policy: policyName(r.Policy), Token: r.Token, Why: r.Why})
 	}
 	return d
+}
+
+// Movement is one crawler's change between two runs.
+type Movement struct {
+	Name      string  `json:"name"`
+	Direction string  `json:"direction"`
+	Was       float64 `json:"was_share"`
+	Now       float64 `json:"now_share"`
+	Factor    float64 `json:"factor,omitempty"`
+}
+
+// Comparison is the delta against an earlier run, present only when one was given.
+type Comparison struct {
+	PreviousTotal int64      `json:"previous_total_requests"`
+	Movements     []Movement `json:"movements"`
+}
+
+// SnapshotFrom reads a stored advise document back into the shape a comparison needs.
+//
+// ⚠️ It refuses anything that is not an advise document of a schema this build understands:
+// comparing against a lint document, or against a future schema whose `share` might mean something
+// else, would invent a trend — and a trend is what somebody acts on.
+func SnapshotFrom(b []byte, source string) (*advise.Snapshot, error) {
+	var doc struct {
+		Schema    string `json:"schema"`
+		TotalReqs int64  `json:"total_requests"`
+		Decisions []struct {
+			Name  string  `json:"name"`
+			Share float64 `json:"share"`
+		} `json:"decisions"`
+	}
+	if err := json.Unmarshal(b, &doc); err != nil {
+		return nil, fmt.Errorf("%s: %w", source, err)
+	}
+	if doc.Schema != SchemaAdvise {
+		return nil, fmt.Errorf("%s: schema is %q, expected %q — an earlier run of `advise --json`",
+			source, doc.Schema, SchemaAdvise)
+	}
+	snap := &advise.Snapshot{Total: doc.TotalReqs, Shares: map[string]float64{}}
+	for _, d := range doc.Decisions {
+		snap.Shares[d.Name] = d.Share
+	}
+	return snap, nil
 }
 
 // FromCheck builds the check document. `findings` is the structural pass run on the same body.
@@ -231,6 +277,14 @@ func FromAdvise(a *advise.Advice, robotsTxt string, userAgents int) AdviseDoc {
 			dec.Evidence = ev
 		}
 		d.Decisions = append(d.Decisions, dec)
+	}
+	if c := a.Comparison; c != nil {
+		d.Comparison = &Comparison{PreviousTotal: c.PreviousTotal,
+			Movements: make([]Movement, 0, len(c.Movements))}
+		for _, m := range c.Movements {
+			d.Comparison.Movements = append(d.Comparison.Movements, Movement{Name: m.Name,
+				Direction: m.Direction.String(), Was: m.Was, Now: m.Now, Factor: m.Factor})
+		}
 	}
 	return d
 }
