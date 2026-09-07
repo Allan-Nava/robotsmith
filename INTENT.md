@@ -204,6 +204,16 @@ carries the paths and the timestamps, and the tool was throwing them away. It sh
 for the decisions a person has to take, and **only** from a real log — a `uniq -c` count cannot know
 them, and inventing them would be worse than omitting them.
 
+### The policy file is strict, and says whose answer it is
+Making the table overridable was the easy half. The half that matters: every decision now carries
+the rule that produced it and whether that rule came from the site's file or from the defaults,
+because the report exists to be argued with — and an answer whose origin is invisible cannot be. The
+parser refuses an unknown key, an unknown value, a bad pattern and a rule an earlier one already
+swallows: a policy file that half-works reads exactly like an applied decision and is not one, which
+is the same failure mode as a robots.txt that looks right and does nothing. A broken file is exit 2
+and a missing one exit 4, never a warning followed by the defaults: applying the opinion the site
+explicitly rejected, quietly, would be the worst of both.
+
 ### The annotations live in the binary, the action stays thin
 An annotation is only useful if it lands on the defective line in the diff view — a summary in the
 job log is something nobody scrolls to. Getting there depends on GitHub's escaping rules (an

@@ -201,12 +201,43 @@ robotsmith advise --ua-counts ua.txt
 | `advise` | `--host <host>` | the site's host, used to validate the `Sitemap:` line |
 | `advise` | `--out <file>` | write the advised file there instead of stdout |
 | `advise` | `--diff` | review what would change against `--current`, instead of printing the whole file |
+| `advise` | `--policy <file.json>` | this site's own answers where it disagrees with the built-in table (see below) |
 | `check`, `lint` | `--format <text\|json\|github>` | the shape of the answer; `github` emits workflow annotations on the offending lines |
 | all four | `--json` | shorthand for `--format json` (kept: pipelines pin it) |
 <!-- flags:end -->
 
 The flag table above is checked against the binary by a test: a flag that exists and is not
 documented — or documented and no longer exposed — fails the build.
+
+### Your own policy, written down
+
+The classification table is an opinion — a defensible one, and documented as such in
+[INTENT.md](INTENT.md) — but a news site and a shop do not owe each other the same answer about a
+given crawler. `--policy` makes disagreeing cheap, and more importantly **written down**:
+
+```json
+{
+  "schema": "robotsmith.policy/1",
+  "rules": [
+    {"pattern": "bytespider", "policy": "allow", "why": "we license our content to them"},
+    {"pattern": "internal-indexer", "family": "search", "policy": "allow"},
+    {"pattern": "semrush", "policy": "ignore", "why": "our SEO team runs it"}
+  ]
+}
+```
+
+First match wins, as in the built-in table. `policy` is `allow`, `block`, `review` or `ignore`;
+`family` is optional and only needed to *reclassify* something. The reasoning then names the rule
+that fired and the file it came from, so a decision can be argued with:
+
+```
+  ALLOW    Bytespider              13.02%  we license our content to them [policy.json: bytespider]
+```
+
+⚠️ The file is **strict**: an unknown key, an unknown value, a broken pattern or a rule that an
+earlier one already covers is an error, not a warning. A policy file that half-works reads like an
+applied decision and is not one. JSON and not YAML, because a YAML parser would be a dependency and
+zero dependencies is an invariant here.
 
 ### In a GitHub workflow
 

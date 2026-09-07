@@ -257,6 +257,11 @@ type Decision struct {
 	// Evidence is present only when the input was a real log. The CLI shows it for the decisions a
 	// person has to take (REVIEW), where the shape of the traffic is the argument.
 	Evidence *Evidence
+	// Rule is the pattern that decided this, and FromPolicy says whether it came from the site's
+	// policy file or from the built-in table. A decision whose provenance is invisible cannot be
+	// argued with.
+	Rule       string
+	FromPolicy bool
 }
 
 // Advice is the full result of the algorithm.
@@ -273,8 +278,28 @@ type Advice struct {
 // blocking something worth 0.1% adds maintenance without removing load.
 const MinCandidateShare = 0.5
 
-// Analyze applies the algorithm to the observations.
+// Override is a source of per-site answers — the parsed policy file. It is an interface so this
+// package keeps knowing nothing about JSON or files (see internal/policy).
+//
+// It returns the family (Unknown meaning "not stated, keep the classification"), the policy, the
+// reason written in the file, the pattern that matched, and whether anything matched at all.
+type Override interface {
+	Override(ua string) (Family, Policy, string, string, bool)
+}
+
+// Options are the analysis knobs that default to off.
+type Options struct {
+	// Override, when set, wins over the built-in table: that is the whole point of the file.
+	Override Override
+}
+
+// Analyze applies the algorithm with no overrides — the call everything already makes.
 func Analyze(obs []Observation) *Advice {
+	return AnalyzeWith(obs, Options{})
+}
+
+// AnalyzeWith applies the algorithm, consulting the site's own policy first where it has one.
+func AnalyzeWith(obs []Observation, opt Options) *Advice {
 	a := &Advice{}
 	agg := map[string]*Decision{}
 	for _, o := range obs {
@@ -294,6 +319,29 @@ func Analyze(obs []Observation) *Advice {
 			browserShare += share
 		}
 		pol, why := policyFor(fam, share)
+		rule, fromPolicy := "", false
+		if opt.Override != nil {
+			if ofam, opol, owhy, orule, ok := opt.Override.Override(o.UA); ok {
+				// ⚠️ A stated family reclassifies; an unstated one (Unknown) leaves the built-in
+				// classification alone and overrides only the policy.
+				if ofam != Unknown {
+					fam = ofam
+				}
+				pol, rule, fromPolicy = opol, orule, true
+				why = owhy
+				if why == "" {
+					why = "set by the policy file (" + orule + ")"
+				}
+				// An overridden crawler is worth a line even when the table would have ignored it:
+				// somebody wrote it down on purpose.
+				if name == "" {
+					name = firstToken(o.UA)
+					if name == "" {
+						name = orule
+					}
+				}
+			}
+		}
 		if pol == Ignore {
 			continue
 		}
@@ -311,7 +359,7 @@ func Analyze(obs []Observation) *Advice {
 			continue
 		}
 		agg[key] = &Decision{Name: name, UA: o.UA, Family: fam, Policy: pol, Requests: o.Requests,
-			Why: why, Evidence: o.Evidence}
+			Why: why, Evidence: o.Evidence, Rule: rule, FromPolicy: fromPolicy}
 	}
 	for _, d := range agg {
 		d.Share = float64(d.Requests) / float64(a.Total) * 100

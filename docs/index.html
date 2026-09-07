@@ -310,6 +310,23 @@ robotsmith advise --ua-counts ua.txt</code></pre>
   </tbody>
 </table>
 
+<h3>Your own policy, written down</h3>
+<p>The classification table is an opinion. <code>--policy</code> makes disagreeing cheap and, more
+importantly, written down — first match wins, as in the built-in table:</p>
+<pre><code>{
+  "schema": "robotsmith.policy/1",
+  "rules": [
+    {"pattern": "bytespider", "policy": "allow", "why": "we license our content to them"},
+    {"pattern": "internal-indexer", "family": "search", "policy": "allow"},
+    {"pattern": "semrush", "policy": "ignore", "why": "our SEO team runs it"}
+  ]
+}</code></pre>
+<p>The reasoning then names the rule and the file, so the decision can be argued with:
+<code>ALLOW Bytespider 13.02% we license our content to them [policy.json: bytespider]</code>.</p>
+<p class="sub">⚠️ The file is strict: an unknown key, an unknown value, a broken pattern or a rule an
+earlier one already covers is an error, not a warning — a policy file that half-works reads like an
+applied decision and is not one.</p>
+
 <h3>In a GitHub workflow</h3>
 <pre><code>- uses: Allan-Nava/robotsmith@v1
   with:

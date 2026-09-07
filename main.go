@@ -26,6 +26,7 @@ import (
 	"github.com/Allan-Nava/robotsmith/internal/advise"
 	"github.com/Allan-Nava/robotsmith/internal/check"
 	"github.com/Allan-Nava/robotsmith/internal/lint"
+	"github.com/Allan-Nava/robotsmith/internal/policy"
 	"github.com/Allan-Nava/robotsmith/internal/report"
 )
 
@@ -150,12 +151,14 @@ func usageText() string {
       which is what the bundled action uses (--json is --format json).
 
   robotsmith advise --log <access.log|-> | --ua-counts <file> [--current <file|url>]
-                    [--host <host>] [--out <file>] [--diff] [--json]
+                    [--host <host>] [--out <file>] [--diff] [--policy <file.json>] [--json]
       ADVISES the file starting from the observed traffic, and explains why.
       --log accepts "-" for stdin and transparently reads gzipped logs, and is the
       only input that can show WHICH paths an unknown crawler asked for.
       --diff reviews what would change against --current instead of printing the
       whole file: reviewing is what decides whether the advice gets applied.
+      --policy takes a JSON file with this site's own answers where it disagrees
+      with the built-in table; the reasoning then says which rule of yours fired.
       --ua-counts accepts the output of "... | sort | uniq -c" (count + user-agent).
 
   robotsmith crawlers [--json]
@@ -228,7 +231,7 @@ func reorderArgs(args []string) []string {
 func takesValue(f string) bool {
 	f = strings.TrimLeft(f, "-")
 	switch f {
-	case "origin", "path", "log", "ua-counts", "current", "host", "out", "format":
+	case "origin", "path", "log", "ua-counts", "current", "host", "out", "format", "policy", "expect", "compare", "report":
 		return true
 	}
 	return false
@@ -277,8 +280,8 @@ func lintFlags(errw io.Writer) (*flag.FlagSet, *lintOpts) {
 }
 
 type adviseOpts struct {
-	logFile, uaCounts, current, host, outFile string
-	asJSON, diff                              bool
+	logFile, uaCounts, current, host, outFile, policyFile string
+	asJSON, diff                                          bool
 }
 
 func adviseFlags(errw io.Writer) (*flag.FlagSet, *adviseOpts) {
@@ -288,6 +291,7 @@ func adviseFlags(errw io.Writer) (*flag.FlagSet, *adviseOpts) {
 	fs.StringVar(&o.uaCounts, "ua-counts", "", "file with `count user-agent` per line (the output of uniq -c)")
 	fs.StringVar(&o.current, "current", "", "current robots.txt (file or URL): its rules are preserved")
 	fs.StringVar(&o.host, "host", "", "host of the site, to validate the Sitemap line")
+	fs.StringVar(&o.policyFile, "policy", "", "JSON policy file: this site's answer where it disagrees with the defaults")
 	fs.StringVar(&o.outFile, "out", "", "write the advised file here instead of on stdout")
 	fs.BoolVar(&o.diff, "diff", false, "review what would change against --current, instead of printing the file")
 	fs.BoolVar(&o.asJSON, "json", false, "emit a machine-readable document on stdout")
@@ -480,6 +484,23 @@ func cmdAdvise(args []string, out, errw io.Writer) int {
 		return 2
 	}
 
+	// ⚠️ Read the policy BEFORE doing any work: falling back to the defaults on a broken file
+	// would apply an opinion the site explicitly rejected, quietly.
+	var override advise.Override
+	if opt.policyFile != "" {
+		b, err := os.ReadFile(opt.policyFile)
+		if err != nil {
+			fmt.Fprintln(errw, "[4]", err)
+			return 4
+		}
+		p, err := policy.Parse(b, opt.policyFile)
+		if err != nil {
+			fmt.Fprintln(errw, err)
+			return 2
+		}
+		override = p
+	}
+
 	var obs []advise.Observation
 	var err error
 	switch {
@@ -503,7 +524,7 @@ func cmdAdvise(args []string, out, errw io.Writer) int {
 		}
 	}
 
-	a := advise.Analyze(obs)
+	a := advise.AnalyzeWith(obs, advise.Options{Override: override})
 	text := advise.Render(a, existing, opt.host)
 
 	if opt.diff {
@@ -523,7 +544,13 @@ func cmdAdvise(args []string, out, errw io.Writer) int {
 		label := map[advise.Policy]string{
 			advise.Allow: "ALLOW   ", advise.Block: "BLOCK   ", advise.Candidate: "REVIEW  ",
 		}[d.Policy]
-		fmt.Fprintf(errw, "  %s %-22s %6.2f%%  %s\n", label, d.Name, d.Share, d.Why)
+		provenance := ""
+		if d.FromPolicy {
+			// Whose answer this is, and which line of theirs: a decision with invisible provenance
+			// cannot be argued with.
+			provenance = fmt.Sprintf(" [%s: %s]", opt.policyFile, d.Rule)
+		}
+		fmt.Fprintf(errw, "  %s %-22s %6.2f%%  %s%s\n", label, d.Name, d.Share, d.Why, provenance)
 	}
 	for _, d := range a.Decisions {
 		// ⚠️ Only for the decisions a person has to take. For an ALLOW or a BLOCK the policy is the

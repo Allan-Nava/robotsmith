@@ -86,6 +86,10 @@ type Decision struct {
 	Why      string  `json:"why"`
 	// Evidence is present only when the input was a real log (a `uniq -c` count cannot know it).
 	Evidence *Evidence `json:"evidence,omitempty"`
+	// Rule and FromPolicyFile say what decided this, so a consumer can tell a site's own answer
+	// from the built-in default.
+	Rule           string `json:"rule,omitempty"`
+	FromPolicyFile bool   `json:"from_policy_file,omitempty"`
 }
 
 // Evidence is the shape of the traffic behind a decision: which paths, over how long.
@@ -194,6 +198,7 @@ func FromAdvise(a *advise.Advice, robotsTxt string, userAgents int) AdviseDoc {
 		dec := Decision{
 			Name: x.Name, UA: x.UA, Family: x.Family.String(), Policy: policyName(x.Policy),
 			Requests: x.Requests, Share: x.Share, Why: x.Why,
+			Rule: x.Rule, FromPolicyFile: x.FromPolicy,
 		}
 		if x.Evidence != nil {
 			ev := &Evidence{TopPaths: make([]PathCount, 0, len(x.Evidence.TopPaths))}

@@ -8,6 +8,13 @@ consumers get exactly what a tag says. Pushing is always the maintainer's call, 
 ## [Unreleased]
 
 ### Added
+- **`advise --policy <file.json>`** ([internal/policy](internal/policy/)): a site's own answers where
+  it disagrees with the built-in table, and the reasoning then names the rule that fired and the
+  file it came from — a decision with invisible provenance cannot be argued with. First match wins;
+  `family` is optional and only needed to reclassify. The parser is **strict**: an unknown key, an
+  unknown value, a broken pattern or a rule an earlier one already covers is an error (exit 2), and
+  a missing file is exit 4 — falling back to the defaults would quietly apply the opinion the site
+  explicitly rejected. JSON, not YAML: a YAML parser would be a dependency.
 - **A GitHub Action** ([action.yml](action.yml)): three lines to put robotsmith in a pipeline.
   Composite, not Docker — it downloads the release binary for the runner and **verifies it against
   the release's own `checksums.txt`** before running it. Exposes `exit-code` and `output` so a later

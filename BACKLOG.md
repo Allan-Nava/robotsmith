@@ -40,7 +40,7 @@ disagree with the items all fail the build. The counts below are therefore check
 |---|---|---:|---:|
 | [v0.2.0 — Fit for a pipeline](#v020--fit-for-a-pipeline) ✅ | make the tool consumable by machines, and cut real releases | 0 | 10 |
 | [v0.3.0 — Sharper advice](#v030--sharper-advice) ✅ | better answers on the same input | 0 | 4 |
-| [v0.4.0 — Your policy, verified continuously](#v040--your-policy-verified-continuously) | overridable policy, a closed loop, one-line CI, a report you can send | 5 | 1 |
+| [v0.4.0 — Your policy, verified continuously](#v040--your-policy-verified-continuously) | overridable policy, a closed loop, one-line CI, a report you can send | 4 | 2 |
 | [Backlog (unscheduled)](#backlog-unscheduled) | worth doing, not worth scheduling | 2 | 1 |
 
 ---
@@ -313,10 +313,11 @@ before it is a red build for anyone else).
 
 ### `policy-config` — let a site override the built-in opinion
 
-- **status**: open
+- **status**: done
 - **priority**: high
 - **labels**: advise, ux
 - **milestone**: v0.4.0 — Your policy, verified continuously
+- **ref**: [internal/policy](internal/policy/), `advise.AnalyzeWith`, [#15](https://github.com/Allan-Nava/robotsmith/issues/15)
 
 The policy table is an opinion — a defensible one, and documented as such in
 [INTENT.md](INTENT.md) — but a news site and a shop do not owe each other the same answer about

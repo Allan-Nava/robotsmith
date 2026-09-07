@@ -429,3 +429,74 @@ func TestACleanRunAnnotatesNothingAndSaysSo(t *testing.T) {
 		t.Errorf("it must still say it ran:\nstdout %q\nstderr %q", stdout, stderr)
 	}
 }
+
+func TestPolicyFileOverridesTheBuiltInAdviceAndSaysSo(t *testing.T) {
+	counts := writeTemp(t, "ua.txt", "5000 Mozilla/5.0 (compatible; Bytespider)\n5000 Mozilla/5.0 (compatible; Googlebot/2.1)\n")
+	pol := writeTemp(t, "policy.json", `{"schema":"robotsmith.policy/1","rules":[
+	  {"pattern":"bytespider","policy":"allow","why":"we license our content to them"}
+	]}`)
+	code, stdout, stderr := runCLI("advise", "--ua-counts", counts, "--policy", pol)
+	if code != 0 {
+		t.Fatalf("exit code = %d, stderr: %s", code, stderr)
+	}
+	if !strings.Contains(stderr, "we license our content to them") {
+		t.Errorf("the file's own reason must appear in the reasoning:\n%s", stderr)
+	}
+	if !strings.Contains(stderr, "policy.json") {
+		t.Errorf("the reasoning must say the answer came from the file, and which one:\n%s", stderr)
+	}
+	if strings.Contains(stdout, "User-agent: Bytespider\nDisallow: /") {
+		t.Error("Bytespider must no longer be blocked in the generated file")
+	}
+	if !strings.Contains(stdout, "User-agent: Bytespider\nAllow: /") {
+		t.Errorf("it must be allowed explicitly instead:\n%s", stdout)
+	}
+}
+
+func TestABrokenPolicyFileIsAUsageErrorNotAWarning(t *testing.T) {
+	// ⚠️ Falling back to the defaults would apply an opinion the site explicitly rejected, quietly.
+	counts := writeTemp(t, "ua.txt", "10 Mozilla/5.0 (compatible; GPTBot/1.4)\n")
+	bad := writeTemp(t, "policy.json", `{"schema":"robotsmith.policy/1","rules":[{"pattern":"x","policy":"maybe"}]}`)
+	code, _, stderr := runCLI("advise", "--ua-counts", counts, "--policy", bad)
+	if code != 2 {
+		t.Errorf("exit code = %d, expected 2 (usage error)", code)
+	}
+	if !strings.Contains(stderr, "maybe") || !strings.Contains(stderr, "rules[0]") {
+		t.Errorf("the error must be actionable: %q", stderr)
+	}
+}
+
+func TestAMissingPolicyFileIsNotSilentlyIgnored(t *testing.T) {
+	counts := writeTemp(t, "ua.txt", "10 Mozilla/5.0 (compatible; GPTBot/1.4)\n")
+	code, _, stderr := runCLI("advise", "--ua-counts", counts, "--policy", filepath.Join(t.TempDir(), "nope.json"))
+	if code != 4 {
+		t.Errorf("exit code = %d, expected 4 (file unreachable)", code)
+	}
+	if !strings.Contains(stderr, "nope.json") {
+		t.Errorf("stderr = %q", stderr)
+	}
+}
+
+func TestPolicyReachesTheJSONDocument(t *testing.T) {
+	counts := writeTemp(t, "ua.txt", "10 Mozilla/5.0 (compatible; Bytespider)\n")
+	pol := writeTemp(t, "policy.json", `{"schema":"robotsmith.policy/1","rules":[{"pattern":"bytespider","policy":"allow"}]}`)
+	_, stdout, _ := runCLI("advise", "--json", "--ua-counts", counts, "--policy", pol)
+	var rep struct {
+		Decisions []struct {
+			Name       string `json:"name"`
+			Policy     string `json:"policy"`
+			Rule       string `json:"rule"`
+			FromPolicy bool   `json:"from_policy_file"`
+		} `json:"decisions"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &rep); err != nil {
+		t.Fatal(err)
+	}
+	if len(rep.Decisions) != 1 {
+		t.Fatalf("decisions = %+v", rep.Decisions)
+	}
+	d := rep.Decisions[0]
+	if d.Policy != "allow" || d.Rule != "bytespider" || !d.FromPolicy {
+		t.Errorf("decision = %+v: a consumer must be able to tell an override from a default", d)
+	}
+}
