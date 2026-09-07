@@ -78,15 +78,55 @@ runs:
         fi
 
         tmp="$(mktemp -d)"
-        archive="robotsmith_${os}_${arch}.tar.gz"
-        # ⚠️ Verify before running. The checksum comes from the same release as the archive, which
-        # is the strongest claim available without a signing key — and it catches the real-world
-        # failure this protects against: a truncated download, or an asset replaced by mistake.
-        curl -fsSL "$url/$archive"      -o "$tmp/$archive"
+        # ⚠️ The asset NAME is discovered, never guessed. It has already changed once (archives to
+        # raw binaries, with the version embedded), and a wrong guess is a 404 that nobody sees
+        # until somebody runs the action. checksums.txt lists exactly what was published, and we
+        # need it for verification anyway.
         curl -fsSL "$url/checksums.txt" -o "$tmp/checksums.txt"
-        ( cd "$tmp" && grep " $archive\$" checksums.txt | sha256sum -c - )
-        tar -xzf "$tmp/$archive" -C "$tmp"
-        install -m 0755 "$tmp/robotsmith" "$tmp/bin-robotsmith" 2>/dev/null || cp "$tmp/robotsmith" "$tmp/bin-robotsmith"
+
+        # Both spellings of each axis, because release tooling disagrees about them
+        # (darwin/macos, amd64/x86_64, arm64/aarch64).
+        case "$os" in
+          linux)  os_re="linux" ;;
+          darwin) os_re="darwin|macos|apple" ;;
+        esac
+        case "$arch" in
+          amd64) arch_re="amd64|x86_64|x64" ;;
+          arm64) arch_re="arm64|aarch64" ;;
+        esac
+
+        asset="$(awk '{print $NF}' "$tmp/checksums.txt" \
+          | grep -iE "(^|[._-])($os_re)([._-]|$)" \
+          | grep -iE "(^|[._-])($arch_re)([._-]|$)" \
+          | head -1)"
+        if [ -z "$asset" ]; then
+          echo "::error::no $os/$arch asset in this release. Published:"
+          awk '{print "  " $NF}' "$tmp/checksums.txt"
+          exit 1
+        fi
+        echo "asset: $asset"
+
+        curl -fsSL "$url/$asset" -o "$tmp/$asset"
+        # sha256sum on Linux, shasum on macOS: assuming one of them fails on half the runners.
+        if command -v sha256sum >/dev/null 2>&1; then
+          ( cd "$tmp" && grep " $asset\$" checksums.txt | sha256sum -c - )
+        else
+          ( cd "$tmp" && grep " $asset\$" checksums.txt | shasum -a 256 -c - )
+        fi
+
+        # An archive or the binary itself: decided by the gzip magic bytes, not by the file name —
+        # the same reason `advise --log` sniffs its input.
+        if [ "$(head -c 2 "$tmp/$asset" | od -An -tx1 | tr -d ' \n')" = "1f8b" ]; then
+          tar -xzf "$tmp/$asset" -C "$tmp"
+          bin="$(find "$tmp" -type f -name robotsmith -perm -u+x | head -1)"
+        else
+          bin="$tmp/$asset"
+        fi
+        if [ -z "$bin" ] || [ ! -f "$bin" ]; then
+          echo "::error::downloaded $asset but found no robotsmith binary in it"; exit 1
+        fi
+        chmod +x "$bin"
+        cp "$bin" "$tmp/bin-robotsmith"
         echo "ROBOTSMITH=$tmp/bin-robotsmith" >> "$GITHUB_ENV"
         "$tmp/bin-robotsmith" version
 

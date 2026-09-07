@@ -126,7 +126,9 @@ func TestTheCompositeActionIsUsableAndDogfooded(t *testing.T) {
 		"--format",         // the tool decides the shape; the action passes it through
 		"default: github",  // ...and annotations are the default: they are why this exists
 		"checksums.txt",    // a downloaded binary is verified before it runs
-		"outputs:",         // so a later step can act on the verdict
+		"awk",              // ⚠️ and its NAME is discovered from checksums.txt, not guessed:
+		//                     hardcoding an archive template broke the action in public
+		"outputs:", // so a later step can act on the verdict
 	} {
 		if !strings.Contains(a, want) {
 			t.Errorf("action.yml is missing %q", want)
@@ -134,6 +136,19 @@ func TestTheCompositeActionIsUsableAndDogfooded(t *testing.T) {
 	}
 	if strings.Contains(a, "go install") && !strings.Contains(a, "fallback") {
 		t.Error("if it can fall back to `go install`, say so: it needs a Go toolchain on the runner")
+	}
+	// The asset name must never be built from a template: the published names have changed once
+	// already (tar.gz → raw binary, with the version embedded) and that 404 was invisible until
+	// somebody ran the action.
+	for _, guessed := range []string{"robotsmith_${os}_${arch}", ".tar.gz\"", "_${VERSION}_"} {
+		if strings.Contains(a, guessed) {
+			t.Errorf("action.yml builds the asset name from a template (%q): derive it from "+
+				"checksums.txt instead, which lists what was actually published", guessed)
+		}
+	}
+	// macOS runners have shasum, not sha256sum: assuming one of them fails on half the runners.
+	if strings.Contains(a, "sha256sum") && !strings.Contains(a, "shasum") {
+		t.Error("verification must work on macOS runners too, where the tool is `shasum -a 256`")
 	}
 
 	ci := readDoc(t, ".github/workflows/ci.yml")
@@ -145,5 +160,19 @@ func TestTheCompositeActionIsUsableAndDogfooded(t *testing.T) {
 	readme := readDoc(t, "README.md")
 	if !strings.Contains(readme, "uses: Allan-Nava/robotsmith@") {
 		t.Error("README.md must show the three-line snippet, or nobody knows the action exists")
+	}
+}
+
+func TestTheReleaseBuildsFromACleanTree(t *testing.T) {
+	// ⚠️ The version string reports whether the tree was dirty, so anything the release writes
+	// INTO the checkout before building ends up stamped into the published binary: v0.2.0 and
+	// v0.3.0 both went out saying "dirty" because the release notes were written next to the code.
+	r := readDoc(t, ".github/workflows/release.yml")
+	if strings.Contains(r, "> notes.md") || strings.Contains(r, "--notes-file notes.md") {
+		t.Error("release.yml writes notes.md into the checkout: use $RUNNER_TEMP, or the binary " +
+			"claims to be built from a modified tree")
+	}
+	if !strings.Contains(r, "RUNNER_TEMP") {
+		t.Error("scratch files belong in $RUNNER_TEMP")
 	}
 }
