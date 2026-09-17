@@ -3,6 +3,7 @@ package advise
 import (
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestClassificationOrder(t *testing.T) {
@@ -190,6 +191,42 @@ func TestRulesSaysWhatHappensToAnUnknownCrawler(t *testing.T) {
 		}
 		if r.Policy != Candidate {
 			t.Errorf("the unknown rule's policy = %v, expected Candidate (a person decides)", r.Policy)
+		}
+	}
+}
+
+func TestEveryRuleSaysWhereItCameFromAndWhen(t *testing.T) {
+	// ⚠️ These rules encode facts about the OUTSIDE world, and the outside world moves: a crawler
+	// is renamed, a vendor splits its UA in two, a token is retired. Without a source and a date
+	// nobody can tell a rule that is still true from one that has been wrong for a year — and a
+	// stale allow is a crawler nobody meant to let in.
+	for _, r := range Rules() {
+		if r.Source == "" {
+			t.Errorf("rule %q states a fact about a crawler and cites nothing", r.Pattern)
+		}
+		if _, err := time.Parse("2006-01-02", r.Since); err != nil {
+			t.Errorf("rule %q: since = %q, expected a YYYY-MM-DD date: %v", r.Pattern, r.Since, err)
+		}
+		if strings.HasPrefix(r.Source, "http") && !strings.HasPrefix(r.Source, "https://") {
+			t.Errorf("rule %q cites %q: a source worth citing is served over https", r.Pattern, r.Source)
+		}
+	}
+}
+
+func TestRuleProvenanceIsNotOlderThanTheTable(t *testing.T) {
+	// A date in the future, or before this table existed, means somebody typed it rather than
+	// looked it up — which is exactly the carelessness the field exists to prevent.
+	born := time.Date(2026, 9, 4, 0, 0, 0, 0, time.UTC)
+	for _, r := range Rules() {
+		d, err := time.Parse("2006-01-02", r.Since)
+		if err != nil {
+			continue // already reported above
+		}
+		if d.Before(born) {
+			t.Errorf("rule %q: since = %s, before this table existed (%s)", r.Pattern, r.Since, born.Format("2006-01-02"))
+		}
+		if d.After(time.Now().AddDate(0, 0, 1)) {
+			t.Errorf("rule %q: since = %s is in the future", r.Pattern, r.Since)
 		}
 	}
 }

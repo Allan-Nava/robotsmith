@@ -58,60 +58,120 @@ type rule struct {
 	fam Family
 	// name is the token to use in the robots.txt (`User-agent: <name>`), where one is needed.
 	name string
+	// since is the day this rule entered the table and src is where the claim about the crawler
+	// comes from. ⚠️ These are not documentation: this table encodes facts about the OUTSIDE
+	// world, and the outside world moves — a crawler is renamed, a vendor splits its UA in two, a
+	// token is retired. Without them a rule that has been wrong for a year looks exactly like one
+	// verified this morning, and a stale ALLOW is a crawler nobody meant to let in. See
+	// TableReviewedEvery for how often they are meant to be revisited.
+	since string
+	src   string
 }
+
+// TableReviewedEvery is how often this table is meant to be checked against its sources. Six
+// months is not arbitrary: it is roughly the interval at which the major vendors have been adding
+// or splitting robots.txt tokens (`Google-Extended`, `Applebot-Extended`, `OAI-SearchBot` all
+// appeared inside one such window). Stated here, in code, because a cadence that lives only in a
+// README is a cadence nobody honours.
+const TableReviewedEvery = 6 * 30 * 24 * time.Hour
+
+// Sources for the rules below, named once so a page that moves is corrected in one place.
+const (
+	srcGoogle     = "https://developers.google.com/search/docs/crawling-indexing/google-common-crawlers"
+	srcBing       = "https://www.bing.com/webmasters/help/which-crawlers-does-bing-use-8c184ec0"
+	srcDuckDuck   = "https://duckduckgo.com/duckduckbot"
+	srcYandex     = "https://yandex.com/support/webmaster/robot-workings/check-yandex-robots.html"
+	srcBaidu      = "https://help.baidu.com/question?prod_id=99&class=0&id=3001"
+	srcSeznam     = "https://napoveda.seznam.cz/en/full-text-search/seznambot-crawler/"
+	srcPetal      = "https://webmaster.petalsearch.com/site/petalbot"
+	srcApple      = "https://support.apple.com/en-us/119829"
+	srcMeta       = "https://developers.facebook.com/docs/sharing/webmasters/web-crawlers"
+	srcX          = "https://developer.x.com/en/docs/x-for-websites/cards/guides/getting-started"
+	srcLinkedIn   = "https://www.linkedin.com/help/linkedin/answer/a522960"
+	srcWhatsApp   = "https://faq.whatsapp.com/"
+	srcTelegram   = "https://core.telegram.org/bots/faq"
+	srcSlack      = "https://api.slack.com/robots"
+	srcDiscord    = "https://discord.com/developers/docs/reference"
+	srcPinterest  = "https://help.pinterest.com/en/business/article/pinterest-crawler"
+	srcEmbedly    = "https://docs.embed.ly/"
+	srcOpenAI     = "https://platform.openai.com/docs/bots"
+	srcCommon     = "https://commoncrawl.org/ccbot"
+	srcAnthropic  = "https://support.anthropic.com/en/articles/8896518-does-anthropic-crawl-data-from-the-web-and-how-can-site-owners-block-the-crawler"
+	srcPerplex    = "https://docs.perplexity.ai/guides/bots"
+	srcAmazon     = "https://developer.amazon.com/amazonbot"
+	srcYou        = "https://about.you.com/"
+	srcDiffbot    = "https://docs.diffbot.com/docs/crawlbot-api"
+	srcSemrush    = "https://www.semrush.com/bot/"
+	srcAhrefs     = "https://ahrefs.com/robot"
+	srcMajestic   = "https://mj12bot.com/"
+	srcMoz        = "https://opensiteexplorer.org/dotbot"
+	srcWebmeup    = "https://webmeup.com/"
+	srcDataForSEO = "https://dataforseo.com/dataforseo-bot"
+	// ⚠️ Not every claim has a vendor page behind it, and pretending otherwise is worse than
+	// admitting it: Bytespider and the long tail of SEO crawlers were identified from real access
+	// logs, and a reader deserves to know which half of the table that is.
+	srcObserved = "observed in production access logs"
+	// A bucket rule covering several vendors cannot cite one of them; it cites the shape it matches.
+	srcSelfDeclared = "self-declared in the user-agent (bot/spider/crawl/slurp/scan/fetch)"
+	srcRFC          = "https://www.rfc-editor.org/rfc/rfc9309.html"
+)
+
+// tableBorn is the day this table was first written. Every rule in it dates from that day unless
+// it says otherwise; a rule added later carries its own date.
+const tableBorn = "2026-09-04"
 
 var rules = []rule{
 	// ⚠️ Allowlist first: "Googlebot" contains "bot", so a generic /bot/ rule placed at the top
 	// would capture every one of them.
-	{regexp.MustCompile(`googlebot`), Search, "Googlebot"},
-	{regexp.MustCompile(`google-inspectiontool`), Search, "Google-InspectionTool"},
-	{regexp.MustCompile(`storebot-google`), Search, "Storebot-Google"},
-	{regexp.MustCompile(`bingbot|adidxbot`), Search, "bingbot"},
-	{regexp.MustCompile(`duckduckbot`), Search, "DuckDuckBot"},
-	{regexp.MustCompile(`yandex`), Search, "YandexBot"},
-	{regexp.MustCompile(`baiduspider`), Search, "Baiduspider"},
-	{regexp.MustCompile(`seznambot`), Search, "SeznamBot"},
-	{regexp.MustCompile(`petalbot`), Search, "PetalBot"},
-	{regexp.MustCompile(`applebot-extended`), AITrain, "Applebot-Extended"},
-	{regexp.MustCompile(`applebot`), Search, "Applebot"},
-	{regexp.MustCompile(`facebookexternalhit|facebookcatalog`), Social, "facebookexternalhit"},
-	{regexp.MustCompile(`twitterbot`), Social, "Twitterbot"},
-	{regexp.MustCompile(`linkedinbot`), Social, "LinkedInBot"},
-	{regexp.MustCompile(`whatsapp`), Social, "WhatsApp"},
-	{regexp.MustCompile(`telegrambot`), Social, "TelegramBot"},
-	{regexp.MustCompile(`slackbot`), Social, "Slackbot"},
-	{regexp.MustCompile(`discordbot`), Social, "Discordbot"},
-	{regexp.MustCompile(`pinterest`), Social, "Pinterest"},
-	{regexp.MustCompile(`redditbot`), Social, "redditbot"},
-	{regexp.MustCompile(`embedly|skypeuripreview`), Social, "Embedly"},
+	{regexp.MustCompile(`googlebot`), Search, "Googlebot", tableBorn, srcGoogle},
+	{regexp.MustCompile(`google-inspectiontool`), Search, "Google-InspectionTool", tableBorn, srcGoogle},
+	{regexp.MustCompile(`storebot-google`), Search, "Storebot-Google", tableBorn, srcGoogle},
+	{regexp.MustCompile(`bingbot|adidxbot`), Search, "bingbot", tableBorn, srcBing},
+	{regexp.MustCompile(`duckduckbot`), Search, "DuckDuckBot", tableBorn, srcDuckDuck},
+	{regexp.MustCompile(`yandex`), Search, "YandexBot", tableBorn, srcYandex},
+	{regexp.MustCompile(`baiduspider`), Search, "Baiduspider", tableBorn, srcBaidu},
+	{regexp.MustCompile(`seznambot`), Search, "SeznamBot", tableBorn, srcSeznam},
+	{regexp.MustCompile(`petalbot`), Search, "PetalBot", tableBorn, srcPetal},
+	{regexp.MustCompile(`applebot-extended`), AITrain, "Applebot-Extended", tableBorn, srcApple},
+	{regexp.MustCompile(`applebot`), Search, "Applebot", tableBorn, srcApple},
+	{regexp.MustCompile(`facebookexternalhit|facebookcatalog`), Social, "facebookexternalhit", tableBorn, srcMeta},
+	{regexp.MustCompile(`twitterbot`), Social, "Twitterbot", tableBorn, srcX},
+	{regexp.MustCompile(`linkedinbot`), Social, "LinkedInBot", tableBorn, srcLinkedIn},
+	{regexp.MustCompile(`whatsapp`), Social, "WhatsApp", tableBorn, srcWhatsApp},
+	{regexp.MustCompile(`telegrambot`), Social, "TelegramBot", tableBorn, srcTelegram},
+	{regexp.MustCompile(`slackbot`), Social, "Slackbot", tableBorn, srcSlack},
+	{regexp.MustCompile(`discordbot`), Social, "Discordbot", tableBorn, srcDiscord},
+	{regexp.MustCompile(`pinterest`), Social, "Pinterest", tableBorn, srcPinterest},
+	{regexp.MustCompile(`redditbot`), Social, "redditbot", tableBorn, srcObserved},
+	{regexp.MustCompile(`embedly|skypeuripreview`), Social, "Embedly", tableBorn, srcEmbedly},
 	// User-triggered AI: BEFORE the training one, because their UA contains "openai".
-	{regexp.MustCompile(`chatgpt-user`), AIUser, "ChatGPT-User"},
-	{regexp.MustCompile(`oai-searchbot`), AIUser, "OAI-SearchBot"},
-	{regexp.MustCompile(`gptbot`), AITrain, "GPTBot"},
-	{regexp.MustCompile(`ccbot`), AITrain, "CCBot"},
-	{regexp.MustCompile(`claudebot|claude-web|anthropic-ai`), AITrain, "ClaudeBot"},
-	{regexp.MustCompile(`perplexity`), AITrain, "PerplexityBot"},
-	{regexp.MustCompile(`bytespider`), AITrain, "Bytespider"},
-	{regexp.MustCompile(`amazonbot`), AITrain, "Amazonbot"},
-	{regexp.MustCompile(`meta-externalagent`), AITrain, "meta-externalagent"},
-	{regexp.MustCompile(`google-extended`), AITrain, "Google-Extended"},
-	{regexp.MustCompile(`youbot|diffbot|timpibot|omgili|imagesift`), AITrain, "YouBot"},
-	{regexp.MustCompile(`semrush`), SEO, "SemrushBot"},
-	{regexp.MustCompile(`ahrefs`), SEO, "AhrefsBot"},
-	{regexp.MustCompile(`mj12bot`), SEO, "MJ12bot"},
-	{regexp.MustCompile(`dotbot`), SEO, "DotBot"},
-	{regexp.MustCompile(`blexbot`), SEO, "BLEXBot"},
-	{regexp.MustCompile(`dataforseo`), SEO, "DataForSeoBot"},
-	{regexp.MustCompile(`majestic|screaming|sistrix|serpstat|barkrowler`), SEO, "MajesticSEO"},
+	{regexp.MustCompile(`chatgpt-user`), AIUser, "ChatGPT-User", tableBorn, srcOpenAI},
+	{regexp.MustCompile(`oai-searchbot`), AIUser, "OAI-SearchBot", tableBorn, srcOpenAI},
+	{regexp.MustCompile(`gptbot`), AITrain, "GPTBot", tableBorn, srcOpenAI},
+	{regexp.MustCompile(`ccbot`), AITrain, "CCBot", tableBorn, srcCommon},
+	{regexp.MustCompile(`claudebot|claude-web|anthropic-ai`), AITrain, "ClaudeBot", tableBorn, srcAnthropic},
+	{regexp.MustCompile(`perplexity`), AITrain, "PerplexityBot", tableBorn, srcPerplex},
+	{regexp.MustCompile(`bytespider`), AITrain, "Bytespider", tableBorn, srcObserved},
+	{regexp.MustCompile(`amazonbot`), AITrain, "Amazonbot", tableBorn, srcAmazon},
+	{regexp.MustCompile(`meta-externalagent`), AITrain, "meta-externalagent", tableBorn, srcMeta},
+	{regexp.MustCompile(`google-extended`), AITrain, "Google-Extended", tableBorn, srcGoogle},
+	{regexp.MustCompile(`youbot|diffbot|timpibot|omgili|imagesift`), AITrain, "YouBot", tableBorn, srcYou},
+	{regexp.MustCompile(`semrush`), SEO, "SemrushBot", tableBorn, srcSemrush},
+	{regexp.MustCompile(`ahrefs`), SEO, "AhrefsBot", tableBorn, srcAhrefs},
+	{regexp.MustCompile(`mj12bot`), SEO, "MJ12bot", tableBorn, srcMajestic},
+	{regexp.MustCompile(`dotbot`), SEO, "DotBot", tableBorn, srcMoz},
+	{regexp.MustCompile(`blexbot`), SEO, "BLEXBot", tableBorn, srcWebmeup},
+	{regexp.MustCompile(`dataforseo`), SEO, "DataForSeoBot", tableBorn, srcDataForSEO},
+	{regexp.MustCompile(`majestic|screaming|sistrix|serpstat|barkrowler`), SEO, "MajesticSEO", tableBorn, srcObserved},
 	// Not addressable through robots.txt.
 	{regexp.MustCompile(`^node$|listmonk|kener|compress-bot|go-http|python|curl|wget|okhttp|` +
 		`java/|health-?check|route53|prometheus|blackbox|zabbix|uptime-kuma|axios|deno/|supabase|` +
-		`nagios|checkly|pingdom|uptimerobot`), Tool, ""},
+		`nagios|checkly|pingdom|uptimerobot`), Tool, "", tableBorn, srcObserved},
 	{regexp.MustCompile(`cfnetwork|darwin/|dalvik|exoplayer|networkingextension|roku|tizen|webos|` +
-		`smart-?tv|appletv|tvos|crkey|firetv`), App, ""},
+		`smart-?tv|appletv|tvos|crkey|firetv`), App, "", tableBorn, srcObserved},
 	// Last resort: whoever declares itself a crawler without being one of the known ones.
-	{regexp.MustCompile(`bot|spider|crawl|slurp|scan|fetch`), Unknown, ""},
-	{regexp.MustCompile(`mozilla`), Browser, ""},
+	{regexp.MustCompile(`bot|spider|crawl|slurp|scan|fetch`), Unknown, "", tableBorn, srcSelfDeclared},
+	{regexp.MustCompile(`mozilla`), Browser, "", tableBorn, srcRFC},
 }
 
 // RuleInfo is one classification rule, in the shape `robotsmith crawlers` prints it. Exposing the
@@ -123,6 +183,11 @@ type RuleInfo struct {
 	Token   string
 	Policy  Policy
 	Why     string
+	// Since is the day the rule entered the table and Source is where its claim comes from —
+	// a vendor page where one exists, an honest "observed in production access logs" where it
+	// does not. A rule whose provenance is invisible cannot be argued with, and cannot be audited.
+	Since  string
+	Source string
 }
 
 // Rules returns the table in evaluation order: the first pattern that matches wins, so the order
@@ -139,7 +204,7 @@ func Rules() []RuleInfo {
 				"ignored below that (a wrong block is invisible)", MinCandidateShare)
 		}
 		out = append(out, RuleInfo{Pattern: r.re.String(), Family: r.fam, Token: r.name,
-			Policy: pol, Why: why})
+			Policy: pol, Why: why, Since: r.since, Source: r.src})
 	}
 	return out
 }

@@ -13,22 +13,116 @@ import (
 	"github.com/Allan-Nava/robotsmith/internal/matcher"
 )
 
+// Case is one expected verdict, with the provenance of the claim behind it. ⚠️ The UA strings
+// below are facts about the outside world — a vendor renames a crawler, splits its UA in two or
+// retires a token, and the case silently starts asserting something about nobody. Since and Source
+// are what let a reader tell a case verified recently from one that has been wrong for a year;
+// see advise.TableReviewedEvery for how often they are meant to be revisited.
+type Case struct {
+	UA     string
+	Since  string
+	Source string
+}
+
+// tableBorn is the day these cases were first written. A case added later carries its own date.
+const tableBorn = "2026-09-04"
+
 // The expected cases a healthy robots.txt must pass: whoever brings visits gets through, whoever
 // takes without giving is blocked. This is the "policy" half of the check, deliberately kept
 // separate from the parser.
 var (
-	MustPass = []string{
-		"Googlebot", "Google-InspectionTool", "Storebot-Google", "bingbot", "DuckDuckBot", "Applebot",
-		"facebookexternalhit", "Twitterbot", "LinkedInBot", "WhatsApp", "TelegramBot", "Slackbot",
-		"Discordbot", "Pinterest", "ChatGPT-User", "OAI-SearchBot",
-		"Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+	mustPassCases = []Case{
+		{"Googlebot", tableBorn, srcGoogle},
+		{"Google-InspectionTool", tableBorn, srcGoogle},
+		{"Storebot-Google", tableBorn, srcGoogle},
+		{"bingbot", tableBorn, srcBing},
+		{"DuckDuckBot", tableBorn, srcDuckDuck},
+		{"Applebot", tableBorn, srcApple},
+		{"facebookexternalhit", tableBorn, srcMeta},
+		{"Twitterbot", tableBorn, srcX},
+		{"LinkedInBot", tableBorn, srcLinkedIn},
+		{"WhatsApp", tableBorn, srcWhatsApp},
+		{"TelegramBot", tableBorn, srcTelegram},
+		{"Slackbot", tableBorn, srcSlack},
+		{"Discordbot", tableBorn, srcDiscord},
+		{"Pinterest", tableBorn, srcPinterest},
+		{"ChatGPT-User", tableBorn, srcOpenAI},
+		{"OAI-SearchBot", tableBorn, srcOpenAI},
+		// Not a crawler: a plain browser must never be caught by a rule meant for robots.
+		{"Mozilla/5.0 (Windows NT 10.0; Win64; x64)", tableBorn, srcRFC},
 	}
-	MustBeBlocked = []string{
-		"YisouSpider", "GPTBot", "CCBot", "ClaudeBot", "anthropic-ai", "PerplexityBot", "Bytespider",
-		"Amazonbot", "meta-externalagent", "SemrushBot", "AhrefsBot", "MJ12bot", "DotBot", "BLEXBot",
-		"DataForSeoBot",
+	mustBeBlockedCases = []Case{
+		{"YisouSpider", tableBorn, srcObserved},
+		{"GPTBot", tableBorn, srcOpenAI},
+		{"CCBot", tableBorn, srcCommon},
+		{"ClaudeBot", tableBorn, srcAnthropic},
+		{"anthropic-ai", tableBorn, srcAnthropic},
+		{"PerplexityBot", tableBorn, srcPerplex},
+		{"Bytespider", tableBorn, srcObserved},
+		{"Amazonbot", tableBorn, srcAmazon},
+		{"meta-externalagent", tableBorn, srcMeta},
+		{"SemrushBot", tableBorn, srcSemrush},
+		{"AhrefsBot", tableBorn, srcAhrefs},
+		{"MJ12bot", tableBorn, srcMajestic},
+		{"DotBot", tableBorn, srcMoz},
+		{"BLEXBot", tableBorn, srcWebmeup},
+		{"DataForSeoBot", tableBorn, srcDataForSEO},
 	}
+
+	// MustPass and MustBeBlocked stay plain string lists: they are what the rest of the package
+	// and the tests count, and the provenance is an annotation on the claim, not a new contract.
+	MustPass      = uas(mustPassCases)
+	MustBeBlocked = uas(mustBeBlockedCases)
 )
+
+// Sources for the cases above. They deliberately repeat the ones in internal/advise rather than
+// importing them: advise must not depend on check, check must not depend on advise's opinion, and
+// a shared constant would quietly couple the parser's expectations to the policy table.
+const (
+	srcGoogle     = "https://developers.google.com/search/docs/crawling-indexing/google-common-crawlers"
+	srcBing       = "https://www.bing.com/webmasters/help/which-crawlers-does-bing-use-8c184ec0"
+	srcDuckDuck   = "https://duckduckgo.com/duckduckbot"
+	srcApple      = "https://support.apple.com/en-us/119829"
+	srcMeta       = "https://developers.facebook.com/docs/sharing/webmasters/web-crawlers"
+	srcX          = "https://developer.x.com/en/docs/x-for-websites/cards/guides/getting-started"
+	srcLinkedIn   = "https://www.linkedin.com/help/linkedin/answer/a522960"
+	srcWhatsApp   = "https://faq.whatsapp.com/"
+	srcTelegram   = "https://core.telegram.org/bots/faq"
+	srcSlack      = "https://api.slack.com/robots"
+	srcDiscord    = "https://discord.com/developers/docs/reference"
+	srcPinterest  = "https://help.pinterest.com/en/business/article/pinterest-crawler"
+	srcOpenAI     = "https://platform.openai.com/docs/bots"
+	srcCommon     = "https://commoncrawl.org/ccbot"
+	srcAnthropic  = "https://support.anthropic.com/en/articles/8896518-does-anthropic-crawl-data-from-the-web-and-how-can-site-owners-block-the-crawler"
+	srcPerplex    = "https://docs.perplexity.ai/guides/bots"
+	srcAmazon     = "https://developer.amazon.com/amazonbot"
+	srcSemrush    = "https://www.semrush.com/bot/"
+	srcAhrefs     = "https://ahrefs.com/robot"
+	srcMajestic   = "https://mj12bot.com/"
+	srcMoz        = "https://opensiteexplorer.org/dotbot"
+	srcWebmeup    = "https://webmeup.com/"
+	srcDataForSEO = "https://dataforseo.com/dataforseo-bot"
+	srcRFC        = "https://www.rfc-editor.org/rfc/rfc9309.html"
+	// ⚠️ Not every claim has a vendor page behind it, and saying so is better than citing one that
+	// does not exist.
+	srcObserved = "observed in production access logs"
+)
+
+// Cases returns every expected case with its provenance, pass cases first. It is what makes the
+// table auditable from the outside instead of only from a diff.
+func Cases() []Case {
+	out := make([]Case, 0, len(mustPassCases)+len(mustBeBlockedCases))
+	out = append(out, mustPassCases...)
+	return append(out, mustBeBlockedCases...)
+}
+
+func uas(cs []Case) []string {
+	out := make([]string, 0, len(cs))
+	for _, c := range cs {
+		out = append(out, c.UA)
+	}
+	return out
+}
 
 // Result is the outcome of the verification.
 type Result struct {

@@ -142,6 +142,10 @@ type Rule struct {
 	Policy  string `json:"policy"`
 	Token   string `json:"token"`
 	Why     string `json:"why"`
+	// Since and Source say when this rule was written and on what authority. A consumer trending
+	// this document over time is exactly who notices that a rule has not been touched in years.
+	Since  string `json:"since"`
+	Source string `json:"source"`
 }
 
 // CrawlersDoc is the document produced by `crawlers --json`. The rules stay in EVALUATION order:
@@ -156,7 +160,8 @@ func FromRules(in []advise.RuleInfo) CrawlersDoc {
 	d := CrawlersDoc{Schema: SchemaCrawlers, Rules: make([]Rule, 0, len(in))}
 	for _, r := range in {
 		d.Rules = append(d.Rules, Rule{Pattern: r.Pattern, Family: r.Family.String(),
-			Policy: policyName(r.Policy), Token: r.Token, Why: r.Why})
+			Policy: policyName(r.Policy), Token: r.Token, Why: r.Why,
+			Since: r.Since, Source: r.Source})
 	}
 	return d
 }

@@ -6,6 +6,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 )
 
 func TestRobotsURL(t *testing.T) {
@@ -287,5 +288,27 @@ func TestExpectIsOffUnlessAsked(t *testing.T) {
 	}
 	if len(res.Expected) != 0 {
 		t.Errorf("no expectations were given: %+v", res.Expected)
+	}
+}
+
+func TestEveryExpectedCaseSaysWhereItCameFromAndWhen(t *testing.T) {
+	// Same reason as the advise table: these are claims about the outside world. A case that
+	// asserts "Applebot must pass" is only as good as the day somebody last checked that Apple
+	// still calls it that — and without the date nobody can tell.
+	cases := Cases()
+	if len(cases) != len(MustPass)+len(MustBeBlocked) {
+		t.Fatalf("%d cases carry provenance but %d are checked: the two lists must be one list",
+			len(cases), len(MustPass)+len(MustBeBlocked))
+	}
+	for _, c := range cases {
+		if c.Source == "" {
+			t.Errorf("case %q asserts a fact about a crawler and cites nothing", c.UA)
+		}
+		if _, err := time.Parse("2006-01-02", c.Since); err != nil {
+			t.Errorf("case %q: since = %q, expected a YYYY-MM-DD date", c.UA, c.Since)
+		}
+		if strings.HasPrefix(c.Source, "http") && !strings.HasPrefix(c.Source, "https://") {
+			t.Errorf("case %q cites %q: a source worth citing is served over https", c.UA, c.Source)
+		}
 	}
 }

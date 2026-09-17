@@ -705,3 +705,44 @@ func TestAnUnknownReportExtensionIsAUsageError(t *testing.T) {
 		t.Errorf("the error must say what is supported: %q", stderr)
 	}
 }
+
+func TestCrawlersPublishesWhereEachRuleCameFrom(t *testing.T) {
+	// The table is the opinionated core of this tool. Someone deciding whether to trust it needs
+	// to see not only what it believes but on what authority, and how old that belief is.
+	code, stdout, stderr := runCLI("crawlers")
+	if code != 0 {
+		t.Fatalf("exit code = %d, stderr: %s", code, stderr)
+	}
+	if !strings.Contains(stdout, "https://platform.openai.com/docs/bots") {
+		t.Errorf("the human listing must cite its sources:\n%s", stdout)
+	}
+	if !strings.Contains(stdout, "2026-09-04") {
+		t.Errorf("the human listing must date its rules:\n%s", stdout)
+	}
+	if !strings.Contains(stdout, "revisited") {
+		t.Errorf("the listing must say how often the table should be revisited:\n%s", stdout)
+	}
+
+	code, stdout, stderr = runCLI("crawlers", "--json")
+	if code != 0 {
+		t.Fatalf("exit code = %d, stderr: %s", code, stderr)
+	}
+	var doc struct {
+		Rules []struct {
+			Pattern string `json:"pattern"`
+			Since   string `json:"since"`
+			Source  string `json:"source"`
+		} `json:"rules"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &doc); err != nil {
+		t.Fatalf("crawlers --json is not valid JSON: %v", err)
+	}
+	if len(doc.Rules) == 0 {
+		t.Fatal("no rules in the document")
+	}
+	for _, r := range doc.Rules {
+		if r.Since == "" || r.Source == "" {
+			t.Errorf("rule %q ships without provenance: since=%q source=%q", r.Pattern, r.Since, r.Source)
+		}
+	}
+}
