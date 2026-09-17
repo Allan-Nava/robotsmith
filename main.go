@@ -436,7 +436,13 @@ func cmdCrawlers(args []string, out, errw io.Writer) int {
 	label := map[advise.Policy]string{
 		advise.Allow: "ALLOW ", advise.Block: "BLOCK ", advise.Candidate: "REVIEW", advise.Ignore: "IGNORE",
 	}
-	fmt.Fprintf(out, "%d rules, in evaluation order — the FIRST match wins.\n\n", len(rules))
+	fmt.Fprintf(out, "%d rules, in evaluation order — the FIRST match wins.\n", len(rules))
+	// ⚠️ The cadence belongs next to the table, not in a README: this listing is what somebody
+	// reads when deciding whether to trust the opinion, and "how old is this?" is half that
+	// decision. These rules describe the outside world, and the outside world moves.
+	fmt.Fprintf(out, "Each rule carries the day it was written and the source it came from; "+
+		"the table is meant to be revisited every %d months.\n\n",
+		int(advise.TableReviewedEvery.Hours()/(24*30)))
 	for _, r := range rules {
 		token := r.Token
 		switch {
@@ -453,6 +459,7 @@ func cmdCrawlers(args []string, out, errw io.Writer) int {
 		if r.Why != "" {
 			fmt.Fprintf(out, "%13s%s\n", "", r.Why)
 		}
+		fmt.Fprintf(out, "%13ssince %s · %s\n", "", r.Since, r.Source)
 	}
 	return 0
 }
@@ -565,12 +572,13 @@ func cmdAdvise(args []string, out, errw io.Writer) int {
 	}
 
 	var obs []advise.Observation
+	var inputWarnings []string
 	var err error
 	switch {
 	case opt.uaCounts != "":
 		obs, err = readCounts(opt.uaCounts)
 	case opt.logFile != "":
-		obs, err = readLog(opt.logFile, os.Stdin)
+		obs, inputWarnings, err = readLog(opt.logFile, os.Stdin)
 	default:
 		fmt.Fprintln(errw, "either --log or --ua-counts is required")
 		return 2
@@ -578,6 +586,11 @@ func cmdAdvise(args []string, out, errw io.Writer) int {
 	if err != nil {
 		fmt.Fprintln(errw, "[4]", err)
 		return 4
+	}
+	// ⚠️ Before anything else, and on stderr even in --json mode: advice built on a log the parser
+	// could not read looks exactly like advice built on the whole of it.
+	for _, w := range inputWarnings {
+		fmt.Fprintln(errw, "warning:", w)
 	}
 	var existing string
 	if opt.current != "" {
@@ -815,34 +828,40 @@ func readCounts(path string) ([]advise.Observation, error) {
 // readLog extracts the user-agents from an access log. `path` may be "-" for stdin, and a gzipped
 // stream is decompressed transparently — rotated logs arrive gzipped and usually down a pipe, and
 // decompressing gigabytes to disk first just to count user-agents is not a real option.
-func readLog(path string, stdin io.Reader) ([]advise.Observation, error) {
+func readLog(path string, stdin io.Reader) ([]advise.Observation, []string, error) {
 	var src io.Reader
 	if path == "-" {
 		src = stdin
 	} else {
 		f, err := os.Open(path)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		defer f.Close()
 		src = f
 	}
 	src, err := maybeGunzip(src)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	count := map[string]int64{}
 	paths := map[string]map[string]int64{}
 	first := map[string]time.Time{}
 	last := map[string]time.Time{}
+	var lines, read int64
 	sc := scanner(src)
 	for sc.Scan() {
 		line := sc.Text()
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		lines++
 		uas := userAgentsIn(line)
 		if len(uas) == 0 {
 			continue
 		}
+		read++
 		path := pathIn(line)
 		when := timeIn(line)
 		for _, ua := range uas {
@@ -865,7 +884,7 @@ func readLog(path string, stdin io.Reader) ([]advise.Observation, error) {
 		}
 	}
 	if err := sc.Err(); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	var obs []advise.Observation
 	for ua, n := range count {
@@ -880,7 +899,29 @@ func readLog(path string, stdin io.Reader) ([]advise.Observation, error) {
 		obs = append(obs, o)
 	}
 	sort.Slice(obs, func(i, j int) bool { return obs[i].Requests > obs[j].Requests })
-	return obs, nil
+	return obs, formatWarnings(lines, read), nil
+}
+
+// unreadableLineShare is how much of a log may carry no user-agent before the format itself is
+// suspect. ⚠️ It is not zero and cannot be: a `-` user-agent is ordinary in any real log, and a
+// warning that fires on every run is a warning people learn to scroll past. Half the lines is the
+// point where "some clients send no UA" stops being a plausible explanation and "this parser does
+// not understand this format" starts.
+const unreadableLineShare = 0.5
+
+// formatWarnings turns "I read almost nothing" into something said out loud. The failure this
+// guards against is silent by nature: a format the parser cannot handle produces no error and no
+// empty output, just advice derived from a fraction of the traffic — which reads exactly like
+// advice derived from all of it.
+func formatWarnings(lines, read int64) []string {
+	if lines == 0 || float64(lines-read) <= unreadableLineShare*float64(lines) {
+		return nil
+	}
+	return []string{fmt.Sprintf(
+		"no user-agent found on %s of %s log lines: the advice below is derived from what was read, "+
+			"not from your traffic. HAProxy needs `capture request header User-Agent len 200` for "+
+			"`option httplog` to carry one; a custom `log-format` must quote it (%%{+Q}) or capture it.",
+		thousandsSep(lines-read), thousandsSep(lines))}
 }
 
 // maybeGunzip sniffs the gzip magic bytes instead of trusting the file name: rotated logs are
@@ -903,13 +944,14 @@ func maybeGunzip(r io.Reader) (io.Reader, error) {
 }
 
 // userAgentsIn pulls the user-agent out of one log line. The heuristic is deliberately simple:
-// take the quoted fields and drop the request line and the referer. It works with both HAProxy and
-// nginx's `combined` format, which put the UA in different positions.
+// take the candidate fields and drop the request line and the referer. It works with nginx's
+// `combined`, which quotes the UA, and with HAProxy's `option httplog`, which does not quote it at
+// all — ⚠️ captured request headers land in {braces}, so a parser that only reads quoted fields
+// sees a HAProxy log as a log with no crawlers in it.
 func userAgentsIn(line string) []string {
 	var out []string
-	parts := strings.Split(line, `"`)
-	for i := 1; i < len(parts); i += 2 {
-		c := strings.TrimSpace(parts[i])
+	for _, c := range append(quotedFields(line), bracedFields(line)...) {
+		c = strings.TrimSpace(c)
 		if c == "" || c == "-" {
 			continue
 		}
@@ -922,9 +964,53 @@ func userAgentsIn(line string) []string {
 		if strings.HasPrefix(c, "http://") || strings.HasPrefix(c, "https://") {
 			continue // referer
 		}
+		if isMediaType(c) {
+			continue
+		}
 		out = append(out, c)
 	}
 	return out
+}
+
+// quotedFields returns the odd-indexed halves of a line split on quotes: the quoted fields.
+func quotedFields(line string) []string {
+	var out []string
+	parts := strings.Split(line, `"`)
+	for i := 1; i < len(parts); i += 2 {
+		out = append(out, parts[i])
+	}
+	return out
+}
+
+var reBraced = regexp.MustCompile(`\{([^{}]*)\}`)
+
+// bracedFields returns what HAProxy captured. `capture request header Host` followed by
+// `capture request header User-Agent` writes `{example.com|Mozilla/5.0 ...}` — one brace group,
+// the headers pipe-separated in declaration order — so every segment is a candidate and the
+// filters in userAgentsIn decide. The RESPONSE captures arrive in a second brace group, which is
+// why isMediaType exists.
+func bracedFields(line string) []string {
+	var out []string
+	for _, m := range reBraced.FindAllStringSubmatch(line, -1) {
+		out = append(out, strings.Split(m[1], "|")...)
+	}
+	return out
+}
+
+// isMediaType recognises a captured `Content-Type`. It contains a slash and often a space, so
+// every other filter lets it through — and counting `text/html` as a crawler would invent traffic
+// that never happened. ⚠️ Matching on the top-level type is the safe half of the test: no crawler
+// is named `text` or `application`, whereas `Googlebot/2.1` has the same shape as a media type.
+func isMediaType(s string) bool {
+	top, _, ok := strings.Cut(s, "/")
+	if !ok {
+		return false
+	}
+	switch strings.ToLower(strings.TrimSpace(top)) {
+	case "text", "image", "application", "audio", "video", "multipart", "font", "model", "message":
+		return true
+	}
+	return false
 }
 
 // pathIn pulls the requested path out of the quoted request line (`GET /news/a HTTP/1.1`). The
