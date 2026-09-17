@@ -41,7 +41,8 @@ disagree with the items all fail the build. The counts below are therefore check
 | [v0.2.0 — Fit for a pipeline](#v020--fit-for-a-pipeline) ✅ | make the tool consumable by machines, and cut real releases | 0 | 10 |
 | [v0.3.0 — Sharper advice](#v030--sharper-advice) ✅ | better answers on the same input | 0 | 4 |
 | [v0.4.0 — Your policy, verified continuously](#v040--your-policy-verified-continuously) ✅ | overridable policy, a closed loop, one-line CI, a report you can send | 0 | 6 |
-| [Backlog (unscheduled)](#backlog-unscheduled) | worth doing, not worth scheduling | 2 | 1 |
+| [v0.5.0 — Trust the input, date the opinion](#v050--trust-the-input-date-the-opinion) ✅ | read the logs people actually have, and say how old the answers are | 0 | 2 |
+| [Backlog (unscheduled)](#backlog-unscheduled) | worth doing, not worth scheduling | 0 | 1 |
 
 ---
 
@@ -425,18 +426,25 @@ diffed in CI instead of eyeballed), a test asserts the header, the xref table an
 that every number present in the HTML report is present in the PDF, and a run with no
 `--report` flag behaves exactly as it does today.
 
-# Backlog (unscheduled)
+# v0.5.0 — Trust the input, date the opinion
 
-Worth doing, not worth scheduling. Not "next": pulling one of these in means moving it to a
-milestone first.
+> ✅ **Closed** — both items implemented and tested, written up in
+> [CHANGELOG.md](CHANGELOG.md) under `0.5.0`.
+
+**Goal**: the two ways this tool can be quietly wrong without anyone noticing. It can read a log it
+does not understand and advise on a fraction of the traffic, and it can hold an opinion that stopped
+being true a year ago. Neither produces an error; both produce a confident answer. This milestone
+makes each of them say so.
 
 ### `haproxy-log-format-coverage` — validate the UA extraction against real formats
 
-- **status**: open
+- **status**: done
 - **priority**: medium
 - **labels**: tests, advise
+- **milestone**: v0.5.0 — Trust the input, date the opinion
+- **ref**: [logs_test.go](logs_test.go), `TestUserAgentIsFoundInEveryRealLogFormat`, `formatWarnings`
 
-`readLog` takes the quoted fields and drops the request line and the referer. It is tested against
+`readLog` took the quoted fields and dropped the request line and the referer. It was tested against
 nginx `combined`; HAProxy's `httplog` puts captured headers in `{braces}`, and a custom
 `log-format` can put the UA anywhere. The failure mode is silent: no crash, just user-agents that
 never show up in the advice.
@@ -444,6 +452,27 @@ never show up in the advice.
 **Done when:** a fixture per real format (nginx combined, HAProxy httplog with captured headers,
 HAProxy custom log-format) is asserted, and a format the parser cannot handle produces a warning
 instead of a silently short list.
+
+### `crawler-table-provenance` — date and source every rule
+
+- **status**: done
+- **priority**: low
+- **labels**: advise, docs
+- **milestone**: v0.5.0 — Trust the input, date the opinion
+- **ref**: `advise.RuleInfo`, `check.Case`, `advise.TableReviewedEvery`, `TestEveryRuleSaysWhereItCameFromAndWhen`
+
+The tables in `internal/advise` and `internal/check` encode facts about the outside world that
+change: a crawler is renamed, an AI vendor splits its UA in two, a token is retired. Nothing recorded
+when a rule was added or where the claim came from, so nobody could tell a stale rule from a current
+one.
+
+**Done when:** every rule carries a source and a date (comment or struct field), and the
+documentation says how often the table should be revisited.
+
+# Backlog (unscheduled)
+
+Worth doing, not worth scheduling. Not "next": pulling one of these in means moving it to a
+milestone first.
 
 ### `robots-txt-of-this-repo` — dogfood the tool on its own Pages site
 
@@ -470,17 +499,3 @@ was invisible there. Plus a weekly job that lints the live host-root file (a str
 hurts every site on the host and is actionable) and **reports without failing** on its policy, which
 is the account owner's call, not this repo's: a check that cannot be acted on here would only teach
 people to ignore a red build.
-
-### `crawler-table-provenance` — date and source every rule
-
-- **status**: open
-- **priority**: low
-- **labels**: advise, docs
-
-The tables in `internal/advise` and `internal/check` encode facts about the outside world that
-change: a crawler is renamed, an AI vendor splits its UA in two, a token is retired. Nothing records
-when a rule was added or where the claim came from, so nobody can tell a stale rule from a current
-one.
-
-**Done when:** every rule carries a source and a date (comment or struct field), and the
-documentation says how often the table should be revisited.

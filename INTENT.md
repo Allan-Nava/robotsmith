@@ -289,6 +289,35 @@ policy of the shared host root, which is the account owner's call. A check that 
 something nobody here can act on does not create pressure to fix it — it trains people to ignore
 red, and then the next real failure is invisible too.
 
+### A warning threshold, not a warning on every run
+
+HAProxy's default `httplog` carries no `User-Agent`, so `advise` on such a log used to produce a
+short list that looked exactly like a complete one. The obvious fix — warn whenever a line yields no
+user-agent — is the wrong one: a `-` user-agent is ordinary in any real log, the warning would fire
+on every run, and a warning that always fires is one people learn to scroll past. So the threshold
+is **half the lines**: the point where "some clients send no UA" stops being a plausible explanation
+and "this parser does not understand this format" starts. The number is a named constant with that
+argument next to it, because the right value is a judgement and the next person deserves to see the
+judgement, not just the number.
+
+### Provenance on the tables, and an honest "observed"
+
+The tables in `internal/advise` and `internal/check` are the only part of this tool that encodes
+facts about the **outside** world, and the outside world moves: a crawler is renamed, a vendor
+splits its UA in two, a token is retired. Every rule and every expected case therefore carries the
+day it was written and the source it came from, and `crawlers` prints both — because a rule that has
+been wrong for a year otherwise looks exactly like one verified this morning.
+
+The temptation was to cite a vendor page for all of them. Half of this table came from real access
+logs (Bytespider, YisouSpider, the long tail of SEO crawlers), and inventing a URL for those would
+make the field *worse* than absent: a dead link reads as authority. They say
+`observed in production access logs`, which is both true and, as provenance goes, actually useful —
+it tells the reader which half of the table is documented and which half is empirical.
+
+The revisit cadence lives in code (`advise.TableReviewedEvery`, six months — roughly the interval at
+which `Google-Extended`, `Applebot-Extended` and `OAI-SearchBot` appeared) and is printed in the
+`crawlers` header. A cadence that lives only in a README is a cadence nobody honours.
+
 ## Non-goals
 
 Stated, not forgotten:
@@ -315,6 +344,11 @@ Stated, not forgotten:
   schemas, `lint --strict`, logs from stdin and gzip, CLI integration tests on the exit-code
   contract, release automation with the version from the tag, and a gate that keeps the docs
   honest. Each decision above; backlog in [BACKLOG.md](BACKLOG.md).
+- **2026-09-17** — milestone *v0.5.0 — Trust the input, date the opinion* complete: HAProxy's
+  braced captures are read, a log the parser cannot read is said out loud instead of silently
+  shortening the advice, and every rule and expected case carries its source and its date.
+  Reasoning above under *A warning threshold, not a warning on every run* and *Provenance on the
+  tables*.
 - **2026-09-07** — milestone *v0.4.0 — Your policy, verified continuously* complete: `--policy`,
   `check --expect`, `advise --compare`, and the HTML/PDF report. Reasoning above.
 - **2026-09-04** — shipped as a GitHub Action, with findings as annotations (first item of

@@ -122,8 +122,10 @@ package manager inside it.</p>
   </div>
   <div class="cmd">
     <h3>crawlers</h3>
-    <p>What opinion does this tool hold? Prints the whole classification table in evaluation order
-    — family, policy, the token it would write, and why.</p>
+    <p>What opinion does this tool hold, and on what authority? Prints the whole classification
+    table in evaluation order — family, policy, the token it would write, why, and for each rule
+    the source it came from and the day it was written. The table is meant to be revisited every
+    six months: these are facts about the outside world, and the outside world moves.</p>
   </div>
 </div>
 
@@ -300,7 +302,7 @@ robotsmith advise --ua-counts ua.txt</code></pre>
     <tr><td><code>check</code></td><td><code>--sitemaps</code></td><td>ask every <code>Sitemap:</code> URL whether it answers — off by default, because a verification must not make network calls nobody asked for</td></tr>
     <tr><td><code>check</code></td><td><code>--quiet</code></td><td>print the verdict only</td></tr>
     <tr><td><code>lint</code></td><td><code>--strict</code></td><td>make warnings fail too, for a file that must be correct under a first-match parser as well</td></tr>
-    <tr><td><code>advise</code></td><td><code>--log &lt;file|-&gt;</code></td><td>access log (HAProxy or nginx); <code>-</code> reads stdin, gzipped input is decompressed transparently</td></tr>
+    <tr><td><code>advise</code></td><td><code>--log &lt;file|-&gt;</code></td><td>access log (nginx <code>combined</code>, HAProxy <code>httplog</code> or a custom <code>log-format</code>); <code>-</code> reads stdin, gzipped input is decompressed transparently</td></tr>
     <tr><td><code>advise</code></td><td><code>--ua-counts &lt;file&gt;</code></td><td>a count already made: the output of <code>… | sort | uniq -c</code></td></tr>
     <tr><td><code>advise</code></td><td><code>--current &lt;file|url&gt;</code></td><td>the current <code>robots.txt</code>, whose rules are preserved verbatim</td></tr>
     <tr><td><code>advise</code></td><td><code>--host &lt;host&gt;</code></td><td>the site's host, used to validate the <code>Sitemap:</code> line</td></tr>
@@ -309,6 +311,26 @@ robotsmith advise --ua-counts ua.txt</code></pre>
     <tr><td>all three</td><td><code>--json</code></td><td>emit a machine-readable document on stdout</td></tr>
   </tbody>
 </table>
+
+<h3>Log formats</h3>
+<p><code>--log</code> reads the user-agent out of whatever the edge writes. Three shapes are covered
+by a fixture each, because the failure mode here is <b>silent</b>: a format the parser does not
+understand produces no crash and no empty output, just advice derived from a fraction of the
+traffic.</p>
+<table>
+  <thead><tr><th>Format</th><th>Where the user-agent is</th><th>Read</th></tr></thead>
+  <tbody>
+    <tr><td>nginx <code>combined</code></td><td>the last quoted field</td><td>✅</td></tr>
+    <tr><td>HAProxy <code>option httplog</code> + <code>capture request header User-Agent</code></td><td>in <code>{braces}</code>, pipe-separated when several headers are captured</td><td>✅</td></tr>
+    <tr><td>HAProxy custom <code>log-format</code> quoting the UA</td><td>a quoted field</td><td>✅</td></tr>
+    <tr><td>HAProxy <code>option httplog</code> with <b>no</b> capture</td><td>nowhere — the header is not logged</td><td>⚠️ warned</td></tr>
+  </tbody>
+</table>
+<p>The last row is the one that matters. HAProxy's default <code>httplog</code> carries no
+user-agent at all, so an advice built on it would be built on nothing — <code>advise</code> says so
+on stderr instead of printing a short list that looks complete. Add the capture and the traffic
+appears:</p>
+<pre><code>capture request header User-Agent len 200</code></pre>
 
 <h3>A report you can send</h3>
 <p>The person who signs off on blocking a third of the crawler traffic is usually not the person who

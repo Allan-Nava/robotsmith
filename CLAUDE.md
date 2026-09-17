@@ -114,8 +114,12 @@ These are the things that, changed by accident, break the tool silently.
    file its own linter rejects — `TestGeneratedFileHasNoDefectsTheLinterWouldFlag` guards this.
 5. **Pre-existing rules are carried over unchanged**, and orphaned ones are **recovered** with a
    warning. Losing a rule a person wrote is the worst damage this tool can do.
-6. **Thresholds are named, documented constants**: `MinCandidateShare` (0.5%) and `AutoBlockShare`
-   (3%). If you change them, update the comment with the *why*, not just the number.
+6. **Thresholds are named, documented constants**: `MinCandidateShare` (0.5%), `AutoBlockShare`
+   (3%) and `unreadableLineShare` (50% of log lines with no user-agent before the format itself is
+   reported as unread). If you change them, update the comment with the *why*, not just the number.
+
+   ⚠️ `unreadableLineShare` cannot be lowered to zero: a `-` user-agent is ordinary in any real
+   log, and a warning that fires on every run is one people learn to scroll past.
 7. **Process exit codes**: `0` everything as it should be · `1` something is not · `2` usage error ·
    `4` file unreachable. They are a contract for CI pipelines: do not reassign them.
 8. **The generated file goes to stdout, messages to stderr**, so
@@ -138,9 +142,13 @@ These are the things that, changed by accident, break the tool silently.
 
 1. Add the case to `TestClassificationOrder` with the **real** UA copied from the logs.
 2. Check that the test fails.
-3. Insert the `rule` at the right place in the order (specific before generic).
-4. If it is a crawler that *must* pass or *must* be blocked in `check` too, add it to `MustPass` /
-   `MustBeBlocked` in [check.go](internal/check/check.go) — and remember that
+3. Insert the `rule` at the right place in the order (specific before generic), with its `since`
+   (today's date, **not** `tableBorn`) and its `src`. ⚠️ Cite a vendor page only if you have opened
+   it: `srcObserved` is the honest answer for a crawler identified from the logs, and a dead link
+   reads as authority. `TestEveryRuleSaysWhereItCameFromAndWhen` refuses a rule with neither.
+4. If it is a crawler that *must* pass or *must* be blocked in `check` too, add it to
+   `mustPassCases` / `mustBeBlockedCases` in [check.go](internal/check/check.go) — with the same
+   date and source — from which `MustPass` / `MustBeBlocked` are derived — and remember that
    `TestRunOnHealthyFileFindsNoProblem` uses the length of those lists, so update the test's
    `healthy` file accordingly.
 5. If it is a token that exists **only** for `robots.txt` (`Google-Extended`,

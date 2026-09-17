@@ -7,7 +7,33 @@ consumers get exactly what a tag says. Pushing is always the maintainer's call, 
 
 ## [Unreleased]
 
-_Nothing yet._
+**Trust the input, date the opinion** (milestone `v0.5.0`) — the two ways this tool could be quietly
+wrong. It could read a log it did not understand and advise on a fraction of the traffic, and it
+could hold an opinion that stopped being true a year ago. Neither produced an error; both produced a
+confident answer.
+
+### Added
+- **HAProxy logs are read.** `option httplog` puts captured request headers in `{braces}`, never in
+  quotes, so a parser that only looked at quoted fields saw a HAProxy log as a log with no crawlers
+  in it. Braced captures are now candidates too, pipe-separated when several headers are captured
+  (`{example.com|Mozilla/5.0 …}`), and the **response** capture group is filtered out by media type
+  — counting `text/html` as a crawler would invent traffic that never happened. A fixture per real
+  format now guards it: nginx `combined`, HAProxy `httplog` with one and with two captures, and a
+  custom `log-format` that quotes the UA.
+- **`advise` says when it could not read the log.** HAProxy's default `httplog` carries no
+  `User-Agent` at all — without a `capture request header` there is nothing to read — and the old
+  answer was a short list that looked complete. When more than half the lines yield no user-agent,
+  a warning on stderr says how many were skipped and what to add to the HAProxy config. ⚠️ The
+  threshold is not zero and cannot be: a `-` user-agent is ordinary in any real log, and a warning
+  that fires every run is a warning people learn to scroll past.
+- **Every classification rule and every expected case now carries its source and the day it was
+  written**, exposed by `crawlers` (human listing and `--json`, new `since` and `source` fields).
+  These tables encode facts about the outside world — a crawler is renamed, a vendor splits its UA
+  in two, a token is retired — and without provenance a rule that has been wrong for a year looks
+  exactly like one verified this morning. Where a vendor page exists it is cited; where none does,
+  the rule says `observed in production access logs` rather than citing something that does not
+  exist. `advise.TableReviewedEvery` states the cadence (six months) in code, and the `crawlers`
+  header prints it, because a cadence that lives only in a README is one nobody honours.
 
 ## [0.4.0] — 2026-09-07
 

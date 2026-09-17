@@ -168,7 +168,8 @@ robotsmith check example.com --sitemaps
 # what would change if I applied the advice? (the review, not a second file to eyeball)
 robotsmith advise --log access.log --current https://example.com/robots.txt --diff
 
-# the opinion this tool applies, readable before you trust it with your logs
+# the opinion this tool applies, readable before you trust it with your logs —
+# every rule cites its source and the day it was written, and the table is revisited every 6 months
 robotsmith crawlers
 
 # advice from the logs (HAProxy or nginx), preserving the current rules
@@ -196,7 +197,7 @@ robotsmith advise --ua-counts ua.txt
 | `check` | `--sitemaps` | also ask every `Sitemap:` URL whether it answers — off by default, because a verification must not make network calls nobody asked for |
 | `check` | `--quiet` | print the verdict only |
 | `lint` | `--strict` | make warnings fail too, for a file that must be correct under a first-match parser as well |
-| `advise` | `--log <file\|->` | access log (HAProxy or nginx); `-` reads stdin and gzipped input is decompressed transparently |
+| `advise` | `--log <file\|->` | access log (nginx `combined`, HAProxy `httplog` or a custom `log-format` — see [Log formats](#log-formats)); `-` reads stdin and gzipped input is decompressed transparently |
 | `advise` | `--ua-counts <file>` | a count already made: the output of `… \| sort \| uniq -c` |
 | `advise` | `--current <file\|url>` | the current `robots.txt`, whose rules are preserved verbatim |
 | `advise` | `--host <host>` | the site's host, used to validate the `Sitemap:` line |
@@ -211,6 +212,31 @@ robotsmith advise --ua-counts ua.txt
 
 The flag table above is checked against the binary by a test: a flag that exists and is not
 documented — or documented and no longer exposed — fails the build.
+
+### Log formats
+
+`--log` reads the user-agent out of whatever the edge writes. Three shapes are covered by a fixture
+each, because the failure mode here is **silent** — a format the parser does not understand
+produces no crash and no empty output, just advice derived from a fraction of the traffic:
+
+| Format | Where the UA is | Read |
+|---|---|---|
+| nginx `combined` | the last quoted field | ✅ |
+| HAProxy `option httplog` + `capture request header User-Agent` | in `{braces}`, pipe-separated when several headers are captured | ✅ |
+| HAProxy custom `log-format` quoting the UA (`%{+Q}[capture.req.hdr(n)]`) | a quoted field | ✅ |
+| HAProxy `option httplog` with **no** capture | nowhere — the header is not logged | ⚠️ warned |
+
+The last row is the one that matters. HAProxy's default `httplog` carries no user-agent at all, so
+there is nothing to read and an advice built on it would be built on nothing — `advise` says so on
+stderr instead of printing a short list that looks complete. Add the capture and the traffic
+appears:
+
+```
+capture request header User-Agent len 200
+```
+
+The counts are what must always work; paths and timestamps are extra, and a format that carries no
+date produces a report with less in it rather than an error.
 
 ### A report you can send
 
