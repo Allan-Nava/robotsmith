@@ -7,6 +7,10 @@ consumers get exactly what a tag says. Pushing is always the maintainer's call, 
 
 ## [Unreleased]
 
+_Nothing yet._
+
+## [0.5.0] — 2026-09-17
+
 **Trust the input, date the opinion** (milestone `v0.5.0`) — the two ways this tool could be quietly
 wrong. It could read a log it did not understand and advise on a fraction of the traffic, and it
 could hold an opinion that stopped being true a year ago. Neither produced an error; both produced a
@@ -237,7 +241,8 @@ installable everywhere, and the automation that keeps all of it honest.
 - `internal/matcher`: RFC 9309 parser and evaluation (longest match, `Allow` wins ties).
 - Exit codes `0` / `1` / `2` / `4` as a CI contract.
 
-[Unreleased]: https://github.com/Allan-Nava/robotsmith/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/Allan-Nava/robotsmith/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/Allan-Nava/robotsmith/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/Allan-Nava/robotsmith/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/Allan-Nava/robotsmith/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/Allan-Nava/robotsmith/compare/v0.1.0...v0.2.0
