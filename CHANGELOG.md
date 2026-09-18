@@ -100,8 +100,6 @@ result became something you can hand to whoever signs off on it.
   how automation ends up running unexplained. It joins the gates already covering flags, exit codes,
   JSON schemas, the Go version and the install methods.
 
-_Next up: [v0.4.0 — Your policy, verified continuously](BACKLOG.md#v040--your-policy-verified-continuously)._
-
 ## [0.3.0] — 2026-09-04
 
 **Sharper advice** — same inputs, more of the reasoning made visible. No change to the exit codes or
