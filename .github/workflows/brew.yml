@@ -34,7 +34,8 @@ jobs:
       fail-fast: false
       matrix:
         # The cask's only artifact is `binary`, which is NOT in Homebrew's MACOS_ONLY_ARTIFACTS —
-        # so the `on_linux` branch is real and Linuxbrew installs it. Both get exercised.
+        # so the `on_linux` branch is real and Linuxbrew installs it. Both get exercised, but only
+        # macOS comes with brew preinstalled: see the setup step below.
         os: [macos-14, ubuntu-latest]
     runs-on: ${{ matrix.os }}
     # A guard, not an optimisation: the install is a download and an untar. Anything near this
@@ -66,6 +67,15 @@ jobs:
             echo "go=0" >> "$GITHUB_OUTPUT"
             echo "::notice::no release yet — nothing has been published to the tap, so there is nothing to install"
           fi
+
+      # ⚠️ GitHub's Ubuntu images do not ship Homebrew, so this leg had never actually run: until
+      # the first release existed the whole job was gated off, and the very first time it got here
+      # it died on `brew: command not found`. Installing it is the fix, not dropping the leg — the
+      # cask's only artifact is `binary`, so its `on_linux` branch is real, and a cask that works on
+      # macOS and breaks under Linuxbrew is precisely what nobody notices until a user reports it.
+      - name: Homebrew, on runners that do not ship it
+        if: steps.gate.outputs.go == '1' && runner.os == 'Linux'
+        uses: Homebrew/actions/setup-homebrew@2026.09.13.1
 
       - name: Install from the tap
         if: steps.gate.outputs.go == '1'

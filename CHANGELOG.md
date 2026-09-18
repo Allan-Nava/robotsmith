@@ -7,7 +7,12 @@ consumers get exactly what a tag says. Pushing is always the maintainer's call, 
 
 ## [Unreleased]
 
-_Nothing yet._
+### Fixed
+- **The `brew` job's Linux leg installs Homebrew before using it.** GitHub's Ubuntu images do not
+  ship it, so that half of the matrix died on `brew: command not found` the first time it ever ran —
+  it had been gated off until a release existed, and 0.5.1 was that release. macOS was green
+  throughout and confirmed the tap serves the current version; the Linux leg is what checks the
+  cask's `on_linux` branch, which is real because the cask's only artifact is `binary`.
 
 ## [0.5.1] — 2026-09-18
 
