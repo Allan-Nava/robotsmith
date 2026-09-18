@@ -7,6 +7,10 @@ consumers get exactly what a tag says. Pushing is always the maintainer's call, 
 
 ## [Unreleased]
 
+_Nothing yet._
+
+## [0.5.1] — 2026-09-18
+
 ### Fixed
 - **The release workflow could not publish anything.** `--release-notes "${RUNNER_TEMP}/notes.md"`
   sat under `with:`, which is read by the Actions expression engine and not by a shell, so
@@ -15,6 +19,11 @@ consumers get exactly what a tag says. Pushing is always the maintainer's call, 
   action-asset fix and was invisible until a tag was pushed — the most expensive moment to find
   out — so a test now scans every workflow's `with:` blocks for `${VAR}` and fails the build
   instead.
+
+  ⚠️ `v0.4.0` and `v0.5.0` are tagged but carry no published archives: the publisher was broken when
+  they were pushed, and their trees still hold the broken workflow, so re-running them would fail
+  the same way. `go install github.com/Allan-Nava/robotsmith@v0.5.0` works from the tag; the
+  archives, the cask and the image tags start at `v0.5.1`.
 
 ## [0.5.0] — 2026-09-17
 
@@ -248,7 +257,8 @@ installable everywhere, and the automation that keeps all of it honest.
 - `internal/matcher`: RFC 9309 parser and evaluation (longest match, `Allow` wins ties).
 - Exit codes `0` / `1` / `2` / `4` as a CI contract.
 
-[Unreleased]: https://github.com/Allan-Nava/robotsmith/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/Allan-Nava/robotsmith/compare/v0.5.1...HEAD
+[0.5.1]: https://github.com/Allan-Nava/robotsmith/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/Allan-Nava/robotsmith/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/Allan-Nava/robotsmith/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/Allan-Nava/robotsmith/compare/v0.2.0...v0.3.0
