@@ -406,6 +406,11 @@ view of the pull request instead of in a log nobody scrolls. <code>command</code
 release binary for the runner and verifies it against the release's own <code>checksums.txt</code>
 before running it — a CI step that curls an unverified binary and executes it is a supply chain
 nobody audited.</p>
+<p>There is one more input, <code>binary</code>, and it exists for exactly one caller: this
+repository's own CI, which has to test <code>action.yml</code> against the branch under review
+rather than against whatever was last published. ⚠️ Pointing it at a path skips the download
+<b>and the checksum verification</b>, so it is the wrong answer everywhere else — pin
+<code>version</code> instead.</p>
 <p class="sub">Without the action, any CI gets the same thing:
 <code>robotsmith lint robots.txt --format github</code>.</p>
 

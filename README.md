@@ -358,6 +358,11 @@ The action downloads the release binary for the runner and **verifies it against
 `checksums.txt`** before running it — a CI step that curls an unverified binary and executes it is a
 supply chain nobody audited.
 
+There is one more input, `binary`, and it exists for exactly one caller: this repository's own CI,
+which has to test `action.yml` against the branch under review rather than against whatever was last
+published. ⚠️ Pointing it at a path skips the download **and the checksum verification**, so it is
+the wrong answer everywhere else — pin `version` instead.
+
 ### Machine-readable output
 
 `--json` puts one document on stdout and nothing else there; the exit code is unchanged. Consumers

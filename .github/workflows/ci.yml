@@ -25,10 +25,29 @@ jobs:
             CGO_ENABLED=0 GOOS="${target%/*}" GOARCH="${target#*/}" go build -o /dev/null .
           done
       # The action is dogfooded here on purpose: a mistake in action.yml is a red check in this
-      # repo before it is a red check for a stranger. ⚠️ `version: latest` downloads a RELEASED
-      # binary, so this exercises the action's install path, not the code in this branch — the
-      # branch's own behaviour is covered by the suite above.
+      # repo before it is a red check for a stranger. It runs TWICE, against two different
+      # binaries, because the two failures it can catch are not the same failure.
+      - name: Build the binary the action will run
+        run: go build -o "$RUNNER_TEMP/robotsmith" .
+
+      # Blocking: action.yml against THIS branch's code. ⚠️ It must not be `version: latest`.
+      # That pins the check to whatever was last PUBLISHED, so the day this branch starts passing a
+      # flag the published binary does not know, ci goes red for something no commit here can fix —
+      # which is what happened between 0.4.0 and 0.5.1: six consecutive red runs nobody acted on,
+      # because releases/latest was 0.2.0 and `--format` had not shipped yet.
       - name: Our own action, on our own robots.txt
+        uses: ./
+        with:
+          command: lint
+          target: docs/robots.txt
+          args: --strict
+          binary: ${{ runner.temp }}/robotsmith
+
+      # Non-blocking: the INSTALL path — asset discovery and checksum verification against the real
+      # release. It is worth exercising (that is the half `d1b889f` had to fix) and it is worth not
+      # blocking on: it depends on a published artifact, which no commit on this branch can change.
+      - name: The action's install path, against the published release
+        continue-on-error: true
         uses: ./
         with:
           command: lint

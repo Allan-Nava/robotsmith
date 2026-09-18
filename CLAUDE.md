@@ -216,7 +216,7 @@ Nothing here needs a person to remember it:
 
 | Trigger | Workflow | What it does |
 |---|---|---|
-| push / PR | [ci.yml](.github/workflows/ci.yml) | `gofmt -l`, `go vet`, `go test -race`, `go build`, cross-compile of the four release targets, coverage summary |
+| push / PR | [ci.yml](.github/workflows/ci.yml) | `gofmt -l`, `go vet`, `go test -race`, `go build`, cross-compile of the four release targets, the action run twice (blocking against the branch's binary, non-blocking against the published release), coverage summary |
 | after every release · weekly | [brew.yml](.github/workflows/brew.yml) | `brew install --cask Allan-Nava/tap/robotsmith` on macOS **and** Linux, then asserts the installed version equals `releases/latest` — the only check that catches a tap left behind — plus the exit codes and the quarantine attribute |
 | push / PR touching the image | [docker.yml](.github/workflows/docker.yml) | builds the image on a PR, pushes it to GHCR on `main` (`edge`) and on a tag (`X.Y.Z`, `X.Y`, `latest`), multi-arch, then smoke-tests it |
 | PR / push touching `BACKLOG.md` | [backlog.yml](.github/workflows/backlog.yml) | **dry run** on a PR, applies on `main`: projects the backlog onto GitHub issues via [cmd/backlog-sync](cmd/backlog-sync/) |

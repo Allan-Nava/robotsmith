@@ -318,6 +318,25 @@ The revisit cadence lives in code (`advise.TableReviewedEvery`, six months — r
 which `Google-Extended`, `Applebot-Extended` and `OAI-SearchBot` appeared) and is printed in the
 `crawlers` header. A cadence that lives only in a README is a cadence nobody honours.
 
+### Dogfooding the action twice, and blocking on only one of them
+
+The action was dogfooded here against `releases/latest`, which quietly coupled this repo's green
+build to whatever was last published. Between 0.4.0 and 0.5.1 that produced six consecutive red
+runs nobody acted on: `--format` had shipped in the branch, the published binary was 0.2.0 and did
+not know the flag, and no commit here could fix it. That is the failure this repo already refuses
+to tolerate in `dogfood.yml` — a red nobody can act on trains people to ignore red — and it had
+grown in the main CI job unnoticed.
+
+So the action now runs twice, because the two things worth catching are not the same thing. Against
+the **branch's own binary** it checks `action.yml`'s logic, and that blocks: it is entirely within
+this repo's control. Against the **published release** it checks the install path — asset discovery
+and checksum verification, the half that had to be fixed once already — and that does not block,
+because it depends on an artifact no commit here can change.
+
+⚠️ The `binary` input that makes the first run possible skips the checksum verification along with
+the download. That is acceptable for a binary this workflow just compiled from the tree it is
+testing, and wrong for anybody else, which is why it is documented as having exactly one caller.
+
 ## Non-goals
 
 Stated, not forgotten:

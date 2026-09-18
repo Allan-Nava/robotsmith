@@ -7,6 +7,20 @@ consumers get exactly what a tag says. Pushing is always the maintainer's call, 
 
 ## [Unreleased]
 
+### Added
+- **`binary:` on the action**, for one caller: this repository's CI, which has to exercise
+  `action.yml` against the branch under review. ⚠️ It skips the download **and** the checksum
+  verification, so it is documented as the wrong answer for everyone else — pin `version` instead.
+
+### Changed
+- **CI dogfoods the action twice and blocks on only one.** Against the branch's own binary it
+  checks `action.yml`'s logic, and that blocks — it is within this repo's control. Against the
+  published release it checks the install path (asset discovery, checksum verification), and that
+  does **not** block, because it depends on an artifact no commit here can change. The old single
+  run was pinned to `releases/latest`, which is how six consecutive red CI runs went unacted on
+  between 0.4.0 and 0.5.1: `--format` had shipped in the branch, the published binary was 0.2.0,
+  and nothing anybody committed here could have turned it green.
+
 ### Fixed
 - **The `brew` job's Linux leg installs Homebrew before using it.** GitHub's Ubuntu images do not
   ship it, so that half of the matrix died on `brew: command not found` the first time it ever ran —

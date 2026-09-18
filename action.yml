@@ -33,6 +33,13 @@ inputs:
     description: 'Release to use: a tag like v0.3.0, or "latest"'
     required: false
     default: latest
+  binary:
+    description: >-
+      Path to a robotsmith binary to use instead of downloading a release. For this repository's
+      own CI, which has to exercise this file against the branch it is testing rather than against
+      whatever was last published. Leave it empty everywhere else.
+    required: false
+    default: ''
   format:
     description: 'text | json | github — "github" turns findings into annotations on the offending lines'
     required: false
@@ -57,8 +64,25 @@ runs:
       shell: bash
       env:
         VERSION: ${{ inputs.version }}
+        BINARY: ${{ inputs.binary }}
       run: |
         set -euo pipefail
+
+        # ⚠️ A given binary short-circuits the download. It exists for one caller — this repo's own
+        # CI — and it exists because the alternative is worse: dogfooding against the last RELEASE
+        # means that the day this file starts passing a new flag, CI is red until somebody cuts a
+        # release. That is not hypothetical: it is what happened between 0.4.0 and 0.5.1, six
+        # consecutive red runs, because the published binary was 0.2.0 and did not know --format.
+        if [ -n "$BINARY" ]; then
+          if [ ! -x "$BINARY" ]; then
+            echo "::error::binary: $BINARY is not an executable file"; exit 1
+          fi
+          echo "ROBOTSMITH=$BINARY" >> "$GITHUB_ENV"
+          echo "::notice::using $BINARY instead of a published release"
+          "$BINARY" version
+          exit 0
+        fi
+
         case "$(uname -s)" in
           Linux)  os=linux ;;
           Darwin) os=darwin ;;
