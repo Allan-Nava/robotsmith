@@ -59,3 +59,24 @@ jobs:
           # then dies on the last step, and the tap silently keeps serving the previous version.
           # That is exactly the failure brew.yml compares against releases/latest to catch.
           HOMEBREW_TAP_GITHUB_TOKEN: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}
+
+      # The moving major tag an action consumer expects: `uses: Allan-Nava/robotsmith@v0` keeps
+      # working across releases, and the documents advertise exactly this.
+      # ⚠️ It runs LAST and only on a release that got this far. A major tag moved onto a release
+      # that failed to publish would point every consumer at assets that do not exist — and it is
+      # force-moved, because a tag that is only ever created stays frozen on the release it was cut
+      # at while looking perfectly maintained, which is worse than not having one.
+      # ⚠️ Never for a prerelease: `v0` must mean the newest STABLE release.
+      - name: Move the major tag
+        if: ${{ !contains(github.ref_name, '-') }}
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          major="${TAG%%.*}"                 # v0.5.1 -> v0
+          if [ "$major" = "$TAG" ]; then
+            echo "::error::$TAG is not vX.Y.Z, refusing to guess a major tag"; exit 1
+          fi
+          git tag -f "$major" "$TAG"
+          git push -f origin "refs/tags/$major"
+          echo "::notice::$major now points at $TAG"

@@ -222,7 +222,7 @@ Nothing here needs a person to remember it:
 | PR / push touching `BACKLOG.md` | [backlog.yml](.github/workflows/backlog.yml) | **dry run** on a PR, applies on `main`: projects the backlog onto GitHub issues via [cmd/backlog-sync](cmd/backlog-sync/) |
 | push to `main` touching `docs/` | [pages.yml](.github/workflows/pages.yml) | publishes `docs/` to GitHub Pages (no Jekyll, no build step) |
 | weekly · push touching the published files | [dogfood.yml](.github/workflows/dogfood.yml) | runs robotsmith against its own site: `lint --strict` on [docs/robots.txt](docs/robots.txt), our `sitemap.xml` must answer 200, and the live host-root file must be structurally sound |
-| tag `v*` | [release.yml](.github/workflows/release.yml) | runs the suite, extracts the notes from `CHANGELOG.md` (**fails if the section is missing**), then goreleaser cross-compiles linux/darwin × amd64/arm64, publishes the archives + `checksums.txt`, and pushes `Casks/robotsmith.rb` to `Allan-Nava/homebrew-tap` |
+| tag `v*` | [release.yml](.github/workflows/release.yml) | runs the suite, extracts the notes from `CHANGELOG.md` (**fails if the section is missing**), then goreleaser cross-compiles linux/darwin × amd64/arm64, publishes the archives + `checksums.txt`, pushes `Casks/robotsmith.rb` to `Allan-Nava/homebrew-tap`, and **force-moves the major tag** (`v0`) onto the release — last, and never for a prerelease |
 | monthly | [dependabot.yml](.github/dependabot.yml) | bumps the workflow actions (Go modules are not listed: zero dependencies is an invariant) |
 
 ⚠️ **A job may only fail on what this repo can fix.** `dogfood.yml` lints the shared host-root
