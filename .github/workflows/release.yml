@@ -48,7 +48,10 @@ jobs:
         with:
           distribution: goreleaser
           version: '~> v2'
-          args: release --clean --release-notes "${RUNNER_TEMP}/notes.md"
+          # ⚠️ `${{ }}`, not `${}`: a `with:` value is read by the Actions expression engine, not
+          # by a shell, so `${RUNNER_TEMP}` reaches goreleaser as a literal path and the release
+          # dies after building every binary. Guarded by TestWorkflowInputsDoNotUseShellVariables.
+          args: release --clean --release-notes "${{ runner.temp }}/notes.md"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # ⚠️ A PAT with write access to Allan-Nava/homebrew-tap — the default GITHUB_TOKEN cannot

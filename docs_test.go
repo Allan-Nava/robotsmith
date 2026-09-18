@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
@@ -120,5 +121,49 @@ func TestEveryWorkflowIsDocumented(t *testing.T) {
 	}
 	if seen < 5 {
 		t.Errorf("expected the workflows to be there, found %d", seen)
+	}
+}
+
+func TestWorkflowInputsDoNotUseShellVariables(t *testing.T) {
+	// ⚠️ This cost two failed releases. A value under `with:` is read by the Actions expression
+	// engine, not by a shell: `${RUNNER_TEMP}` is passed through verbatim and the tool receives a
+	// path with a literal dollar sign in it. Only `${{ runner.temp }}` is substituted. The failure
+	// is invisible in review — the line looks like every shell line around it — and invisible until
+	// a tag is pushed, which is the most expensive moment to find out.
+	entries, err := os.ReadDir(".github/workflows")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// A `with:` block runs until a line dedents out of it. Good enough for these files, and a
+	// false positive here is a line worth looking at anyway.
+	shellVar := regexp.MustCompile(`\$\{[^{]`)
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".yml") {
+			continue
+		}
+		body, err := os.ReadFile(filepath.Join(".github/workflows", e.Name()))
+		if err != nil {
+			t.Fatal(err)
+		}
+		inWith, indent := false, 0
+		for i, line := range strings.Split(string(body), "\n") {
+			trimmed := strings.TrimLeft(line, " ")
+			if trimmed == "" || strings.HasPrefix(trimmed, "#") {
+				continue
+			}
+			lead := len(line) - len(trimmed)
+			if inWith && lead <= indent {
+				inWith = false
+			}
+			if trimmed == "with:" || strings.HasPrefix(trimmed, "with:") {
+				inWith, indent = true, lead
+				continue
+			}
+			if inWith && shellVar.MatchString(line) {
+				t.Errorf("%s:%d passes a shell variable to an action input:\n\t%s\n"+
+					"`with:` is not a shell — use ${{ runner.temp }}, ${{ github.ref_name }} and so on",
+					e.Name(), i+1, strings.TrimSpace(line))
+			}
+		}
 	}
 }

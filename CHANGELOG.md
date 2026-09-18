@@ -7,7 +7,14 @@ consumers get exactly what a tag says. Pushing is always the maintainer's call, 
 
 ## [Unreleased]
 
-_Nothing yet._
+### Fixed
+- **The release workflow could not publish anything.** `--release-notes "${RUNNER_TEMP}/notes.md"`
+  sat under `with:`, which is read by the Actions expression engine and not by a shell, so
+  goreleaser was handed a path with a literal `${RUNNER_TEMP}` in it and died *after* cross-
+  compiling every target. It is `${{ runner.temp }}` now. ⚠️ The regression came in with the
+  action-asset fix and was invisible until a tag was pushed — the most expensive moment to find
+  out — so a test now scans every workflow's `with:` blocks for `${VAR}` and fails the build
+  instead.
 
 ## [0.5.0] — 2026-09-17
 
