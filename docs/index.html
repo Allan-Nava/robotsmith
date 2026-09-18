@@ -394,7 +394,7 @@ contract — otherwise a deliberate exception would fail a built-in case forever
 red by design is one people stop reading.</p>
 
 <h3>In a GitHub workflow</h3>
-<pre><code>- uses: Allan-Nava/robotsmith@v1
+<pre><code>- uses: Allan-Nava/robotsmith@v0
   with:
     command: lint
     target: robots.txt</code></pre>
@@ -406,6 +406,11 @@ view of the pull request instead of in a log nobody scrolls. <code>command</code
 release binary for the runner and verifies it against the release's own <code>checksums.txt</code>
 before running it — a CI step that curls an unverified binary and executes it is a supply chain
 nobody audited.</p>
+<p><code>@v0</code> is a <b>moving</b> tag: the release workflow force-moves it onto every stable
+release, so a pipeline that uses it keeps getting the newest one without a bump. Pin
+<code>@v0.5.1</code> instead when you want a build to be reproducible. ⚠️ <code>v0</code> is a
+<code>0.x</code> line: it moves across minors, and a <code>0.x</code> minor is allowed to change
+behaviour — the exit codes and the flags are the part this repo treats as a contract.</p>
 <p>There is one more input, <code>binary</code>, and it exists for exactly one caller: this
 repository's own CI, which has to test <code>action.yml</code> against the branch under review
 rather than against whatever was last published. ⚠️ Pointing it at a path skips the download

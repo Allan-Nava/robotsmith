@@ -46,9 +46,13 @@ jobs:
       # Non-blocking: the INSTALL path — asset discovery and checksum verification against the real
       # release. It is worth exercising (that is the half `d1b889f` had to fix) and it is worth not
       # blocking on: it depends on a published artifact, which no commit on this branch can change.
-      - name: The action's install path, against the published release
+      # ⚠️ `@v0`, not `./`, and that is the whole point of this step: it runs the reference the
+      # README tells strangers to copy. Using `./` here is how `@v1` stayed advertised and
+      # non-existent — the repo never once ran what it recommends. Until the first release moves
+      # `v0` this step fails, visibly and harmlessly, which is exactly the right amount of noise.
+      - name: The reference we advertise, against the published release
         continue-on-error: true
-        uses: ./
+        uses: Allan-Nava/robotsmith@v0
         with:
           command: lint
           target: docs/robots.txt

@@ -1,6 +1,6 @@
 # robotsmith as a GitHub Action, so adding it to a pipeline is three lines:
 #
-#   - uses: Allan-Nava/robotsmith@v1
+#   - uses: Allan-Nava/robotsmith@v0
 #     with:
 #       command: lint
 #       target: robots.txt

@@ -42,6 +42,7 @@ disagree with the items all fail the build. The counts below are therefore check
 | [v0.3.0 — Sharper advice](#v030--sharper-advice) ✅ | better answers on the same input | 0 | 4 |
 | [v0.4.0 — Your policy, verified continuously](#v040--your-policy-verified-continuously) ✅ | overridable policy, a closed loop, one-line CI, a report you can send | 0 | 6 |
 | [v0.5.0 — Trust the input, date the opinion](#v050--trust-the-input-date-the-opinion) ✅ | read the logs people actually have, and say how old the answers are | 0 | 2 |
+| [v0.6.0 — The three lines actually work](#v060--the-three-lines-actually-work) ✅ | run what we tell other people to run | 0 | 2 |
 | [Backlog (unscheduled)](#backlog-unscheduled) | worth doing, not worth scheduling | 0 | 1 |
 
 ---
@@ -468,6 +469,54 @@ one.
 
 **Done when:** every rule carries a source and a date (comment or struct field), and the
 documentation says how often the table should be revisited.
+
+# v0.6.0 — The three lines actually work
+
+> ✅ **Closed** — both items implemented and tested, written up in
+> [CHANGELOG.md](CHANGELOG.md) under `0.6.0`.
+
+**Goal**: one defect, and the blindness that let it live. Every document opened with
+`uses: Allan-Nava/robotsmith@v1` — the README, the public page, and `action.yml`'s own header — and
+no `v1` tag had ever been pushed. The three-line example, which is the entire pitch of the action,
+failed on first use for anybody who copied it. It survived because this repo's CI ran the action as
+`./`: it never once ran the reference it recommends to everyone else.
+
+### `action-major-tag` — publish the moving major tag the docs promise
+
+- **status**: done
+- **priority**: high
+- **labels**: ci, release, ux
+- **milestone**: v0.6.0 — The three lines actually work
+- **ref**: [release.yml](.github/workflows/release.yml) "Move the major tag", `TestTheAdvertisedMajorTagIsActuallyMaintained`
+
+A major tag is the contract an action consumer expects: `@v0` keeps working across releases without
+a bump, and pinning `@v0.5.1` is the reproducible alternative. Neither was on offer, because the tag
+did not exist. It is force-moved, never merely created — a tag created once stays frozen on the
+release it was cut at while looking perfectly maintained — it runs last so a release that failed to
+publish cannot drag every consumer onto missing assets, and it is skipped for prereleases, because
+`v0` has to mean the newest **stable** release.
+
+**Done when:** a stable tag moves `vX` onto it, the documents advertise the reference that exists,
+and a test refuses a release workflow that advertises a major tag without maintaining it.
+
+### `advertised-reference-gate` — run what we tell other people to run
+
+- **status**: done
+- **priority**: high
+- **labels**: ci, tests, docs
+- **milestone**: v0.6.0 — The three lines actually work
+- **ref**: `TestTheActionReferenceTheDocsAdvertiseIsTheOneWeShip`, [ci.yml](.github/workflows/ci.yml)
+
+The reference is stated in four places and was wrong in three of them for as long as it existed.
+The expected value is not typed into the test either: it is derived from the newest released section
+of [CHANGELOG.md](CHANGELOG.md), the same trick as counting the `check` cases from the tables instead
+of writing a number that goes stale — so reaching `1.0.0` forces the documents to `@v1` rather than
+leaving them behind. And the non-blocking half of CI's dogfooding now uses `@v0` rather than `./`,
+so the advertised path is exercised for real.
+
+**Done when:** a test fails when any document advertises a reference other than the major this
+project actually ships, CI runs that reference, and the check that would have caught the original
+defect is red on the original defect.
 
 # Backlog (unscheduled)
 

@@ -337,6 +337,27 @@ because it depends on an artifact no commit here can change.
 the download. That is acceptable for a binary this workflow just compiled from the tree it is
 testing, and wrong for anybody else, which is why it is documented as having exactly one caller.
 
+### `@v0`, not `@v1`, and a tag that moves
+
+The documents advertised `@v1` while the newest release was `0.5.1`. The tempting fix is to create
+a `v1` tag and be done: the example would start working, and it would be a lie. A `v1` claims a
+stability contract this project has not earned, and it would point at a `0.x` release. So the
+advertised reference is `@v0` — the major that actually ships — and the day `1.0.0` lands the gate
+forces every document to `@v1`, because it derives the expectation from the CHANGELOG rather than
+from a constant somebody has to remember.
+
+The tag is **force-moved** on every stable release rather than created once. A tag that is only
+created stays frozen on the release it was cut at while looking perfectly maintained, which is the
+same failure as a stale Homebrew tap: the thing that is supposed to track the newest release quietly
+stops, and nobody finds out until a user does. It moves last, so a release that died before
+publishing cannot drag every consumer onto assets that do not exist.
+
+⚠️ And the reason nobody noticed for as long as it existed: CI dogfooded the action as `./`. The
+repo ran its own working copy and recommended a reference it had never executed. The non-blocking
+half now runs `@v0` for real — which means that until the first release moves the tag, that step is
+red. That is correct, not a defect: it depends on a published artifact, so it does not block, and it
+is exactly the signal that was missing.
+
 ## Non-goals
 
 Stated, not forgotten:
@@ -363,6 +384,9 @@ Stated, not forgotten:
   schemas, `lint --strict`, logs from stdin and gzip, CLI integration tests on the exit-code
   contract, release automation with the version from the tag, and a gate that keeps the docs
   honest. Each decision above; backlog in [BACKLOG.md](BACKLOG.md).
+- **2026-09-18** — milestone *v0.6.0 — The three lines actually work* complete: the advertised
+  action reference is `@v0` and the tag now exists and moves, and CI runs the reference it
+  recommends instead of a local path. Reasoning above under *`@v0`, not `@v1`*.
 - **2026-09-17** — milestone *v0.5.0 — Trust the input, date the opinion* complete: HAProxy's
   braced captures are read, a log the parser cannot read is said out loud instead of silently
   shortening the advice, and every rule and expected case carries its source and its date.

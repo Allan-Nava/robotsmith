@@ -7,6 +7,34 @@ consumers get exactly what a tag says. Pushing is always the maintainer's call, 
 
 ## [Unreleased]
 
+**The three lines actually work** (milestone `v0.6.0`) — every document opened with
+`uses: Allan-Nava/robotsmith@v1` and no `v1` tag had ever been pushed, so the example that is the
+entire pitch of the action failed on first use. It survived because this repo's CI ran the action as
+`./`: it never once ran the reference it recommends to everyone else.
+
+### Added
+- **The moving major tag exists.** A stable release now force-moves `vX` onto itself, so
+  `uses: Allan-Nava/robotsmith@v0` keeps working across releases and `@v0.5.1` stays available for
+  a build that has to be reproducible. ⚠️ Force-moved, not merely created: a tag created once stays
+  frozen on the release it was cut at while looking maintained. It runs **last**, so a release that
+  failed to publish cannot drag every consumer onto assets that do not exist, and it is skipped for
+  prereleases, because `v0` has to mean the newest *stable* release.
+- **A gate on the reference the documents advertise.** It is stated in four places and was wrong in
+  three. The expected value is not typed into the test: it is derived from the newest released
+  section of this file, the same trick as counting the `check` cases from the tables — so reaching
+  `1.0.0` forces the documents to `@v1` instead of leaving them behind. A second test refuses a
+  release workflow that advertises a major tag without maintaining it.
+
+### Changed
+- **The documents advertise `@v0`**, which is the major this project actually ships, and say what
+  it means: it moves across `0.x` minors, and a `0.x` minor is allowed to change behaviour — the
+  exit codes and the flags are the part treated as a contract. Pin an exact version for
+  reproducibility.
+- **CI's non-blocking dogfood step uses `@v0`, not `./`.** Running the published reference is the
+  whole point of that step; using a local path is precisely how `@v1` stayed advertised and
+  non-existent. ⚠️ Until the first release moves `v0` this step fails — visibly, and without
+  blocking, because it depends on an artifact no commit here can change.
+
 ### Added
 - **`binary:` on the action**, for one caller: this repository's CI, which has to exercise
   `action.yml` against the branch under review. ⚠️ It skips the download **and** the checksum

@@ -167,3 +167,74 @@ func TestWorkflowInputsDoNotUseShellVariables(t *testing.T) {
 		}
 	}
 }
+
+// advertisedActionRef pulls the `uses: Allan-Nava/robotsmith@<ref>` that a document tells people to
+// copy. Three files carry it and they must agree: two of them are the first thing a newcomer reads.
+var reAdvertisedRef = regexp.MustCompile(`uses: Allan-Nava/robotsmith@(\S+)`)
+
+func advertisedActionRefs(t *testing.T, path string) []string {
+	t.Helper()
+	body, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out []string
+	for _, m := range reAdvertisedRef.FindAllStringSubmatch(string(body), -1) {
+		out = append(out, strings.TrimRight(m[1], "\"'`<"))
+	}
+	if len(out) == 0 {
+		t.Fatalf("%s advertises no `uses: Allan-Nava/robotsmith@…` line: the three-line example is "+
+			"the first thing a reader copies", path)
+	}
+	return out
+}
+
+// newestReleasedMajor reads the major version out of the newest released CHANGELOG section. The
+// CHANGELOG is the only in-repo statement of what version this project is at, and deriving the
+// expected reference from it is the same trick as counting the check cases from the tables rather
+// than typing a number that goes stale.
+func newestReleasedMajor(t *testing.T) string {
+	t.Helper()
+	re := regexp.MustCompile(`(?m)^## \[(\d+)\.\d+\.\d+\]`)
+	m := re.FindStringSubmatch(readDoc(t, "CHANGELOG.md"))
+	if m == nil {
+		t.Fatal("CHANGELOG.md has no released `## [X.Y.Z]` section to take the major from")
+	}
+	return "v" + m[1]
+}
+
+func TestTheActionReferenceTheDocsAdvertiseIsTheOneWeShip(t *testing.T) {
+	// ⚠️ This shipped broken: every document said `@v1` while the newest release was 0.5.1 and no
+	// `v1` tag had ever existed, so the three-line example failed for anybody who copied it. The
+	// repo could not notice because its own CI used `./` — it never ran the reference it recommends
+	// to everyone else.
+	want := newestReleasedMajor(t)
+	// ⚠️ ci.yml is in the list because it is the one place that actually RUNS the reference: a
+	// document and a workflow drifting apart is how the advertised one went untested.
+	for _, path := range []string{"README.md", "docs/index.html", "action.yml", ".github/workflows/ci.yml"} {
+		for _, got := range advertisedActionRefs(t, path) {
+			if got != want {
+				t.Errorf("%s advertises `@%s` but the newest release is %s.x, so the major tag we "+
+					"maintain is `%s`: a reference that does not exist fails on first use",
+					path, got, want, want)
+			}
+		}
+	}
+}
+
+func TestTheAdvertisedMajorTagIsActuallyMaintained(t *testing.T) {
+	// A moving major tag is a promise. If nothing moves it, the documents point at a tag that is
+	// either missing or frozen on an old release — which is worse than pinning, because it looks
+	// maintained.
+	release := readDoc(t, ".github/workflows/release.yml")
+	if !strings.Contains(release, "major") {
+		t.Fatal("release.yml does not maintain the major tag the documents advertise: " +
+			"either move it there, or stop advertising it")
+	}
+	for _, needed := range []string{"git tag -f", "git push"} {
+		if !strings.Contains(release, needed) {
+			t.Errorf("release.yml has no %q: the major tag has to be force-moved and pushed, "+
+				"or it stays on the release it was first cut at", needed)
+		}
+	}
+}

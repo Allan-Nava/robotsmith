@@ -341,7 +341,7 @@ zero dependencies is an invariant here.
 ### In a GitHub workflow
 
 ```yaml
-- uses: Allan-Nava/robotsmith@v1
+- uses: Allan-Nava/robotsmith@v0
   with:
     command: lint
     target: robots.txt
@@ -357,6 +357,13 @@ comment, open a ticket or trend the numbers.
 The action downloads the release binary for the runner and **verifies it against the release's own
 `checksums.txt`** before running it — a CI step that curls an unverified binary and executes it is a
 supply chain nobody audited.
+
+`@v0` is a **moving** tag: the release workflow force-moves it onto every stable release, so a
+pipeline that uses it keeps getting the newest one without a bump. Pin `@v0.5.1` instead when you
+want a build to be reproducible — the two choices are the usual trade, and the only wrong answer is
+a reference that does not exist. ⚠️ `v0` is a `0.x` line: it moves across minors, and a `0.x` minor
+is allowed to change behaviour. The exit codes and the flags are the part this repo treats as a
+contract ([Invariants](CLAUDE.md)).
 
 There is one more input, `binary`, and it exists for exactly one caller: this repository's own CI,
 which has to test `action.yml` against the branch under review rather than against whatever was last
