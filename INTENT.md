@@ -353,10 +353,14 @@ stops, and nobody finds out until a user does. It moves last, so a release that 
 publishing cannot drag every consumer onto assets that do not exist.
 
 ⚠️ And the reason nobody noticed for as long as it existed: CI dogfooded the action as `./`. The
-repo ran its own working copy and recommended a reference it had never executed. The non-blocking
-half now runs `@v0` for real — which means that until the first release moves the tag, that step is
-red. That is correct, not a defect: it depends on a published artifact, so it does not block, and it
-is exactly the signal that was missing.
+repo ran its own working copy and recommended a reference it had never executed. It now runs `@v0`
+for real, in a **job of its own** — which is the part that was got wrong first time and is worth
+writing down. `continue-on-error` on a step does not save you from an unresolvable `uses:`: GitHub
+resolves every action during *Prepare all required actions*, before any step runs, so the job dies
+at setup. Sitting inside the required `test` job, that took branch protection's own check down and
+left nothing able to merge. In its own non-required job the reference is still executed for real,
+and its failure costs a visible red instead of a frozen repository. It stays red until a release
+first moves the tag — honest, and exactly the signal that was missing.
 
 ### `main` behind a pull request, with zero required approvals
 

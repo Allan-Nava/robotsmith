@@ -43,20 +43,31 @@ jobs:
           args: --strict
           binary: ${{ runner.temp }}/robotsmith
 
-      # Non-blocking: the INSTALL path — asset discovery and checksum verification against the real
-      # release. It is worth exercising (that is the half `d1b889f` had to fix) and it is worth not
-      # blocking on: it depends on a published artifact, which no commit on this branch can change.
-      # ⚠️ `@v0`, not `./`, and that is the whole point of this step: it runs the reference the
-      # README tells strangers to copy. Using `./` here is how `@v1` stayed advertised and
-      # non-existent — the repo never once ran what it recommends. Until the first release moves
-      # `v0` this step fails, visibly and harmlessly, which is exactly the right amount of noise.
+      - name: Coverage summary
+        run: go test -coverprofile=cover.out ./... >/dev/null && go tool cover -func=cover.out | tail -1
+
+  # The INSTALL path — asset discovery and checksum verification — against the real release, using
+  # `@v0`: the reference the README tells strangers to copy. Running `./` here instead is exactly
+  # how `@v1` stayed advertised and non-existent, because the repo never once ran what it
+  # recommends.
+  #
+  # ⚠️ Its OWN job, and this is not tidiness. GitHub resolves every `uses:` during "Prepare all
+  # required actions", before a single step runs, so a reference that does not resolve fails the
+  # job at setup and `continue-on-error` on the step never gets a chance to apply. As a step inside
+  # `test` it took the branch-protection required check down with it and nothing could merge.
+  # Guarded by TestTheRequiredJobDoesNotDependOnOurOwnPublishedAction.
+  #
+  # ⚠️ It is red until a release first moves `v0`, and that is the honest state of the world rather
+  # than a defect: it depends on a published artifact no commit here can produce, which is also why
+  # it must never become a required check.
+  advertised:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
       - name: The reference we advertise, against the published release
-        continue-on-error: true
         uses: Allan-Nava/robotsmith@v0
         with:
           command: lint
           target: docs/robots.txt
           args: --strict
-
-      - name: Coverage summary
-        run: go test -coverprofile=cover.out ./... >/dev/null && go tool cover -func=cover.out | tail -1
