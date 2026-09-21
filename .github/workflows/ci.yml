@@ -43,20 +43,53 @@ jobs:
           args: --strict
           binary: ${{ runner.temp }}/robotsmith
 
-      # Non-blocking: the INSTALL path — asset discovery and checksum verification against the real
-      # release. It is worth exercising (that is the half `d1b889f` had to fix) and it is worth not
-      # blocking on: it depends on a published artifact, which no commit on this branch can change.
-      # ⚠️ `@v0`, not `./`, and that is the whole point of this step: it runs the reference the
-      # README tells strangers to copy. Using `./` here is how `@v1` stayed advertised and
-      # non-existent — the repo never once ran what it recommends. Until the first release moves
-      # `v0` this step fails, visibly and harmlessly, which is exactly the right amount of noise.
+      - name: Coverage summary
+        run: go test -coverprofile=cover.out ./... >/dev/null && go tool cover -func=cover.out | tail -1
+
+  # The INSTALL path — asset discovery and checksum verification — against the real release, using
+  # `@v0`: the reference the README tells strangers to copy. Running `./` here instead is exactly
+  # how `@v1` stayed advertised and non-existent, because the repo never once ran what it
+  # recommends.
+  #
+  # ⚠️ Its OWN job, and this is not tidiness. GitHub resolves every `uses:` during "Prepare all
+  # required actions", before a single step runs, so a reference that does not resolve fails the
+  # job at setup and `continue-on-error` on the step never gets a chance to apply. As a step inside
+  # `test` it took the branch-protection required check down with it and nothing could merge.
+  # Guarded by TestTheRequiredJobDoesNotDependOnOurOwnPublishedAction.
+  #
+  # ⚠️ Gated on the tag EXISTING, in a separate job, and that is the second half of the same
+  # lesson. Actions are resolved at job setup, so a step-level `if:` does not prevent the
+  # resolution failure — only not starting the job at all does. Without this gate the job is red
+  # from now until the first release moves `v0`, which is a red nobody can act on, and this repo
+  # holds that such a red teaches people to ignore red (see CLAUDE.md, Automation).
+  # Skipped is the honest state before the first release; red afterwards means something to fix.
+  advertised-tag:
+    runs-on: ubuntu-latest
+    outputs:
+      exists: ${{ steps.q.outputs.exists }}
+    steps:
+      - id: q
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          if gh api "repos/$REPO/git/ref/tags/v0" >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::no v0 tag yet — the advertised reference cannot be exercised until a release moves it"
+          fi
+
+  advertised:
+    needs: advertised-tag
+    if: needs.advertised-tag.outputs.exists == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
       - name: The reference we advertise, against the published release
-        continue-on-error: true
         uses: Allan-Nava/robotsmith@v0
         with:
           command: lint
           target: docs/robots.txt
           args: --strict
-
-      - name: Coverage summary
-        run: go test -coverprofile=cover.out ./... >/dev/null && go tool cover -func=cover.out | tail -1

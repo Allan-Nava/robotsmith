@@ -238,3 +238,31 @@ func TestTheAdvertisedMajorTagIsActuallyMaintained(t *testing.T) {
 		}
 	}
 }
+
+func TestTheRequiredJobDoesNotDependOnOurOwnPublishedAction(t *testing.T) {
+	// ⚠️ This cost a CI job that could not go green and a pull request that could not merge.
+	// `uses: Allan-Nava/robotsmith@v0` was a step inside the required `test` job, marked
+	// `continue-on-error`. That flag is useless here: GitHub resolves every `uses:` during
+	// "Prepare all required actions", BEFORE any step runs, so a reference that does not resolve
+	// fails the whole job at setup and takes the required check down with it.
+	//
+	// The reference still has to be exercised — running what we tell strangers to run is the point
+	// — but it belongs in a job of its own, which is allowed to be red while depending on a
+	// published artifact no commit here can produce.
+	body := readDoc(t, ".github/workflows/ci.yml")
+	start := strings.Index(body, "\n  test:")
+	if start < 0 {
+		t.Fatal("ci.yml has no `test:` job, which is the branch-protection required check")
+	}
+	rest := body[start+1:]
+	// The job ends where the next one starts: the first line at the same two-space indentation.
+	end := len(rest)
+	if i := regexp.MustCompile(`(?m)^  [a-z][a-z0-9_-]*:`).FindStringIndex(rest[1:]); i != nil {
+		end = i[0] + 1
+	}
+	if strings.Contains(rest[:end], "uses: Allan-Nava/robotsmith@") {
+		t.Error("the required `test` job references this repo's own PUBLISHED action: a reference " +
+			"that does not resolve fails the job at setup, before continue-on-error can apply, and " +
+			"nothing can merge until a release fixes it. Move it to its own job.")
+	}
+}

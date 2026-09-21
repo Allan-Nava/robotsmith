@@ -21,9 +21,20 @@ it** starting from the site's real traffic. Three commands: `check` (the file as
 - **Commit your own work**, in logical commits, with a message saying what changes and **why** (no
   file lists, no `Co-Authored-By`). A commit is local and revertible: leaving changes uncommitted
   just means somebody else has to write your message for you.
-- **NEVER `git push`.** That is the maintainer's call, always. Same for `gh release`: the tag is
-  what triggers the public release, so an agent creates the annotated tag **locally** only when
-  asked, and never pushes it.
+- **`main` is protected: nothing lands on it except through a pull request.** Every change starts
+  on its own branch (`feat/…`, `fix/…`, `chore/…`, `docs/…`), gets pushed there, and becomes a PR.
+  The `test` check must be green before it can merge. Pushing the branch and opening the PR is now
+  part of doing the work — **merging is still the maintainer's call, and so is `main`**.
+  ⚠️ Protection applies to administrators too, so `git push origin main` fails by design. It is not
+  something to work around: put the commit on a branch.
+- **NEVER push a `v*` tag, and never `gh release`.** The tag is what triggers the public release,
+  so an agent creates the annotated tag **locally** only when asked, and the push is always the
+  maintainer's. ⚠️ Branch protection does not cover tags: an accidental `git push --tags` publishes
+  a release.
+- **Watch the CI on the PR you opened.** A PR handed over red, or handed over before the checks
+  have run, is unfinished work: read the failure and say what it is. ⚠️ Green is not automatically
+  proof — check that the step you care about actually ran and did what you think (that is how six
+  red runs went unnoticed, and how a `@v0` dogfood step can pass for the wrong reason).
 - **Document always, without asking.** A behaviour change touches [README.md](README.md) (usage) and
   `docs/index.html` (the public page); a debatable decision gets a dated line in
   [INTENT.md](INTENT.md); a threshold, exit code or output format change gets one in the
@@ -55,6 +66,13 @@ docker build -t robotsmith . && docker run --rm robotsmith version
 
 CI ([.github/workflows/ci.yml](.github/workflows/ci.yml)) runs exactly: `gofmt -l`, `go vet`,
 `go test -race`, `go build`. If it passes locally it passes there.
+
+```bash
+git switch -c feat/<short-name>          # never commit on main: it is protected
+git push -u origin feat/<short-name>
+gh pr create --fill                      # body says WHY, same standard as a commit message
+gh pr checks --watch                     # a PR handed over before the checks ran is unfinished
+```
 
 ## TDD: mandatory, no exceptions
 

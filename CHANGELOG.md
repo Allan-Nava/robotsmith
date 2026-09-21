@@ -7,6 +7,17 @@ consumers get exactly what a tag says. Pushing is always the maintainer's call, 
 
 ## [Unreleased]
 
+### Changed
+- **`main` is protected and changes land through a pull request**, with the `test` check required
+  to be green. Zero approvals are required — a solo maintainer cannot approve their own PR, so
+  demanding one would block everything — and administrators are included, because a protection the
+  only active account can ignore is advice. ⚠️ Only `test` is required: `image` and `sync` are
+  path-filtered and a required check that never starts leaves a PR waiting forever. Reviews are
+  possible but not required — GitHub does not let anyone approve their own pull request, so on a
+  single-maintainer repo a required approval would block every merge. What gives a review teeth
+  instead: **conversations must be resolved** before merging, and an approval is dismissed when new
+  commits arrive.
+
 **The three lines actually work** (milestone `v0.6.0`) — every document opened with
 `uses: Allan-Nava/robotsmith@v1` and no `v1` tag had ever been pushed, so the example that is the
 entire pitch of the action failed on first use. It survived because this repo's CI ran the action as
@@ -30,10 +41,15 @@ entire pitch of the action failed on first use. It survived because this repo's 
   it means: it moves across `0.x` minors, and a `0.x` minor is allowed to change behaviour — the
   exit codes and the flags are the part treated as a contract. Pin an exact version for
   reproducibility.
-- **CI's non-blocking dogfood step uses `@v0`, not `./`.** Running the published reference is the
-  whole point of that step; using a local path is precisely how `@v1` stayed advertised and
-  non-existent. ⚠️ Until the first release moves `v0` this step fails — visibly, and without
-  blocking, because it depends on an artifact no commit here can change.
+- **CI runs `@v0`, not `./`, in a job of its own.** Running the published reference is the whole
+  point; using a local path is precisely how `@v1` stayed advertised and non-existent. ⚠️ It has to
+  be a separate job: GitHub resolves every `uses:` during *Prepare all required actions*, before a
+  single step runs, so `continue-on-error` on the step never applies — as a step inside `test` an
+  unresolvable `@v0` failed the branch-protection required check at setup and nothing could merge.
+  A test now refuses a required job that references our own published action. ⚠️ And the job is
+  **gated on the tag existing**, because a step-level `if:` does not prevent resolution either —
+  only not starting the job does. Before the first release moves `v0` it is *skipped*, not red: a
+  red nobody can act on is one everybody learns to ignore.
 
 ### Added
 - **`binary:` on the action**, for one caller: this repository's CI, which has to exercise

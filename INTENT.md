@@ -353,10 +353,44 @@ stops, and nobody finds out until a user does. It moves last, so a release that 
 publishing cannot drag every consumer onto assets that do not exist.
 
 ⚠️ And the reason nobody noticed for as long as it existed: CI dogfooded the action as `./`. The
-repo ran its own working copy and recommended a reference it had never executed. The non-blocking
-half now runs `@v0` for real — which means that until the first release moves the tag, that step is
-red. That is correct, not a defect: it depends on a published artifact, so it does not block, and it
-is exactly the signal that was missing.
+repo ran its own working copy and recommended a reference it had never executed. It now runs `@v0`
+for real, in a **job of its own** — which is the part that was got wrong first time and is worth
+writing down. `continue-on-error` on a step does not save you from an unresolvable `uses:`: GitHub
+resolves every action during *Prepare all required actions*, before any step runs, so the job dies
+at setup. Sitting inside the required `test` job, that took branch protection's own check down and
+left nothing able to merge. In its own job the reference is still executed for real, and a failure
+costs a visible red instead of a frozen repository.
+
+⚠️ The same lesson has a second half. Moving it out stopped the repository freezing but left a job
+that would be red from that day until the first release moved the tag — a red nobody can act on,
+which this repo holds to be worse than no check at all. A step-level `if:` cannot help, because
+resolution happens before steps; only *not starting the job* does. So the job is gated on a cheap
+query for the tag: **skipped** before the first release, and red afterwards only when there is
+something to fix.
+
+### `main` behind a pull request, with zero required approvals
+
+The repository is one person plus agents, which is exactly the shape where "I will just push this
+one" turns into the only review anything gets. `main` is now protected: a change arrives through a
+pull request and the `test` check must be green.
+
+Three choices inside that, each of which could have gone the other way:
+
+- **Zero required approvals, but reviews with teeth.** GitHub does not let anyone approve their own
+  pull request, and on this repo every PR is authored by the one account — including the ones an
+  agent opens, which use the same token. A required approval would therefore block every merge
+  forever. So the count stays zero and the review is made to matter another way: **unresolved
+  conversations block the merge**, and an approval is dismissed when new commits land. Leaving a
+  comment is a real gate; pretending an approval could arrive is not.
+- **Administrators included.** Otherwise the protection is advice, and the one account that can
+  ignore it is the account that writes everything. The escape hatch is turning protection off
+  deliberately, which leaves a trace, rather than a habit of pushing past it.
+- **Only `test` is required.** ⚠️ `image` and `sync` are path-filtered: they do not run on every
+  pull request, and a required check that never starts leaves the PR waiting forever. This is the
+  trap to remember before adding another required check.
+
+⚠️ Tags are not covered by branch protection. `release.yml` force-moves `v0`, and a `git push
+--tags` still publishes a release — the discipline there is still a human one.
 
 ## Non-goals
 
@@ -384,6 +418,8 @@ Stated, not forgotten:
   schemas, `lint --strict`, logs from stdin and gzip, CLI integration tests on the exit-code
   contract, release automation with the version from the tag, and a gate that keeps the docs
   honest. Each decision above; backlog in [BACKLOG.md](BACKLOG.md).
+- **2026-09-21** — `main` is protected: pull request required, `test` must be green, zero required
+  approvals, administrators included. Reasoning above under *`main` behind a pull request*.
 - **2026-09-18** — milestone *v0.6.0 — The three lines actually work* complete: the advertised
   action reference is `@v0` and the tag now exists and moves, and CI runs the reference it
   recommends instead of a local path. Reasoning above under *`@v0`, not `@v1`*.
