@@ -358,9 +358,15 @@ for real, in a **job of its own** — which is the part that was got wrong first
 writing down. `continue-on-error` on a step does not save you from an unresolvable `uses:`: GitHub
 resolves every action during *Prepare all required actions*, before any step runs, so the job dies
 at setup. Sitting inside the required `test` job, that took branch protection's own check down and
-left nothing able to merge. In its own non-required job the reference is still executed for real,
-and its failure costs a visible red instead of a frozen repository. It stays red until a release
-first moves the tag — honest, and exactly the signal that was missing.
+left nothing able to merge. In its own job the reference is still executed for real, and a failure
+costs a visible red instead of a frozen repository.
+
+⚠️ The same lesson has a second half. Moving it out stopped the repository freezing but left a job
+that would be red from that day until the first release moved the tag — a red nobody can act on,
+which this repo holds to be worse than no check at all. A step-level `if:` cannot help, because
+resolution happens before steps; only *not starting the job* does. So the job is gated on a cheap
+query for the tag: **skipped** before the first release, and red afterwards only when there is
+something to fix.
 
 ### `main` behind a pull request, with zero required approvals
 
@@ -370,9 +376,12 @@ pull request and the `test` check must be green.
 
 Three choices inside that, each of which could have gone the other way:
 
-- **Zero required approvals.** A solo maintainer cannot approve their own pull request, so
-  requiring one review would mean nothing could ever merge. The gate here is CI, not a second pair
-  of eyes that does not exist.
+- **Zero required approvals, but reviews with teeth.** GitHub does not let anyone approve their own
+  pull request, and on this repo every PR is authored by the one account — including the ones an
+  agent opens, which use the same token. A required approval would therefore block every merge
+  forever. So the count stays zero and the review is made to matter another way: **unresolved
+  conversations block the merge**, and an approval is dismissed when new commits land. Leaving a
+  comment is a real gate; pretending an approval could arrive is not.
 - **Administrators included.** Otherwise the protection is advice, and the one account that can
   ignore it is the account that writes everything. The escape hatch is turning protection off
   deliberately, which leaves a trace, rather than a habit of pushing past it.

@@ -57,12 +57,34 @@ jobs:
   # `test` it took the branch-protection required check down with it and nothing could merge.
   # Guarded by TestTheRequiredJobDoesNotDependOnOurOwnPublishedAction.
   #
-  # ⚠️ It is red until a release first moves `v0`, and that is the honest state of the world rather
-  # than a defect: it depends on a published artifact no commit here can produce, which is also why
-  # it must never become a required check.
-  advertised:
+  # ⚠️ Gated on the tag EXISTING, in a separate job, and that is the second half of the same
+  # lesson. Actions are resolved at job setup, so a step-level `if:` does not prevent the
+  # resolution failure — only not starting the job at all does. Without this gate the job is red
+  # from now until the first release moves `v0`, which is a red nobody can act on, and this repo
+  # holds that such a red teaches people to ignore red (see CLAUDE.md, Automation).
+  # Skipped is the honest state before the first release; red afterwards means something to fix.
+  advertised-tag:
     runs-on: ubuntu-latest
-    continue-on-error: true
+    outputs:
+      exists: ${{ steps.q.outputs.exists }}
+    steps:
+      - id: q
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          if gh api "repos/$REPO/git/ref/tags/v0" >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::no v0 tag yet — the advertised reference cannot be exercised until a release moves it"
+          fi
+
+  advertised:
+    needs: advertised-tag
+    if: needs.advertised-tag.outputs.exists == 'true'
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - name: The reference we advertise, against the published release

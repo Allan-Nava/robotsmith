@@ -12,7 +12,11 @@ consumers get exactly what a tag says. Pushing is always the maintainer's call, 
   to be green. Zero approvals are required — a solo maintainer cannot approve their own PR, so
   demanding one would block everything — and administrators are included, because a protection the
   only active account can ignore is advice. ⚠️ Only `test` is required: `image` and `sync` are
-  path-filtered and a required check that never starts leaves a PR waiting forever.
+  path-filtered and a required check that never starts leaves a PR waiting forever. Reviews are
+  possible but not required — GitHub does not let anyone approve their own pull request, so on a
+  single-maintainer repo a required approval would block every merge. What gives a review teeth
+  instead: **conversations must be resolved** before merging, and an approval is dismissed when new
+  commits arrive.
 
 **The three lines actually work** (milestone `v0.6.0`) — every document opened with
 `uses: Allan-Nava/robotsmith@v1` and no `v1` tag had ever been pushed, so the example that is the
@@ -42,9 +46,10 @@ entire pitch of the action failed on first use. It survived because this repo's 
   be a separate job: GitHub resolves every `uses:` during *Prepare all required actions*, before a
   single step runs, so `continue-on-error` on the step never applies — as a step inside `test` an
   unresolvable `@v0` failed the branch-protection required check at setup and nothing could merge.
-  A test now refuses a required job that references our own published action. The job is red until
-  a release first moves `v0`, which is the honest state of the world, and it must never become a
-  required check.
+  A test now refuses a required job that references our own published action. ⚠️ And the job is
+  **gated on the tag existing**, because a step-level `if:` does not prevent resolution either —
+  only not starting the job does. Before the first release moves `v0` it is *skipped*, not red: a
+  red nobody can act on is one everybody learns to ignore.
 
 ### Added
 - **`binary:` on the action**, for one caller: this repository's CI, which has to exercise
