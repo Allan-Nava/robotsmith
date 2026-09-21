@@ -7,6 +7,13 @@ consumers get exactly what a tag says. Pushing is always the maintainer's call, 
 
 ## [Unreleased]
 
+### Changed
+- **`main` is protected and changes land through a pull request**, with the `test` check required
+  to be green. Zero approvals are required — a solo maintainer cannot approve their own PR, so
+  demanding one would block everything — and administrators are included, because a protection the
+  only active account can ignore is advice. ⚠️ Only `test` is required: `image` and `sync` are
+  path-filtered and a required check that never starts leaves a PR waiting forever.
+
 **The three lines actually work** (milestone `v0.6.0`) — every document opened with
 `uses: Allan-Nava/robotsmith@v1` and no `v1` tag had ever been pushed, so the example that is the
 entire pitch of the action failed on first use. It survived because this repo's CI ran the action as

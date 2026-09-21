@@ -57,9 +57,15 @@ test found them, not a re-read.
 
 - **Do not add dependencies.** Stdlib only. If a parser is needed, write it (there is one already).
 - **Do not touch `LICENSE`** or the documented exit codes.
-- **Commit your work; never push it.** Logical commits, message = what changes and why. A `v*` tag
-  triggers a public release, so create one only when asked, locally — the `git push` is always the
-  maintainer's.
+- **Never commit on `main`; it is protected and the push will be refused.** Branch
+  (`feat/…`, `fix/…`, `chore/…`, `docs/…`), commit, push the branch, open the PR. Logical commits,
+  message = what changes and why, and the PR body holds to the same standard. **Merging is the
+  maintainer's**, and so is `main`.
+- **Then watch the checks.** `gh pr checks --watch`. A PR handed over red, or before the checks
+  ran, is unfinished. ⚠️ And read *what* passed: a green run that exercised the wrong binary is
+  not evidence.
+- **Never push a `v*` tag.** It triggers a public release; create one locally only when asked.
+  ⚠️ Branch protection does not cover tags, so nothing stops an accidental `git push --tags`.
 - **No network in tests**: use `httptest.NewServer`. No real domains, not even in runnable examples.
 - **Do not introduce a toolchain** for the site or the logo: `docs/` is hand-written HTML and SVG.
 - **Keep everything in English**: code, comments, messages and documentation.
