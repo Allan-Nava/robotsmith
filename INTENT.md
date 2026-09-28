@@ -429,6 +429,26 @@ fragment of a structure, not a value. Both were observed, not imagined.
 ⚠️ Additions to that list belong to the same standard: a rule that rejects a shape somebody's real
 crawler might have does not go in, however tidy it looks.
 
+### Showing the denominator, because both defects hid in it
+
+Two counting defects were fixed in this milestone and neither was visible from the output. *"Observed
+8 requests from 7 distinct user-agents"* reads exactly like a correct answer; the only way to catch
+it was to construct three log lines by hand and count them. An operator cannot check a number they
+are never shown against a log they could have counted themselves.
+
+So `advise` now states what it parsed before what it concluded, and the same figures go into the
+`--json` document, where a pipeline can trend them — a log that suddenly reads half as many lines is
+the shape both of these defects took. A mixed log says `mixed` rather than picking a winner: a file
+that is half one thing and half another is a fact worth seeing.
+
+⚠️ There is no summary for `--ua-counts`. A `uniq -c` count has no lines to report on, and inventing
+one would be precisely the confident-looking number this field exists to expose — the same rule the
+`REVIEW` evidence already follows.
+
+⚠️ And the warning's remedy now matches the format that was read. Telling somebody running Caddy to
+add a `capture request header` to their HAProxy config is advice they cannot act on, and this repo
+already holds that a signal nobody can act on trains people to ignore the signal.
+
 ## Non-goals
 
 Stated, not forgotten:
@@ -455,6 +475,8 @@ Stated, not forgotten:
   schemas, `lint --strict`, logs from stdin and gzip, CLI integration tests on the exit-code
   contract, release automation with the version from the tag, and a gate that keeps the docs
   honest. Each decision above; backlog in [BACKLOG.md](BACKLOG.md).
+- **2026-09-28** — milestone *v0.7.0 — Count what actually happened* complete: `advise` states the
+  denominator it computed every share against. Reasoning above under *Showing the denominator*.
 - **2026-09-28** — a candidate that cannot be a user-agent (a leading `/`, an embedded quote) is
   refused, stated as what a user-agent is *not*. Reasoning above under *A list of what a user-agent
   is not*.

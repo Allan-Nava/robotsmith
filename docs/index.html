@@ -340,6 +340,10 @@ starting with <code>/</code> (a request path) and one containing a double quote 
 quoted structure, not a value). ⚠️ Deliberately a list of what a user-agent is <em>not</em>, never a
 pattern one must match — real user-agents are irregular, and dropping a genuine crawler is the worse
 failure: it vanishes from the advice, so nobody ever decides about it.</p>
+<p><code>advise</code> says what it parsed before saying what it concluded —
+<code>Parsed 4,812 of 5,000 log lines (json), 188 skipped.</code> — with the same figures in the
+<code>--json</code> document under <code>input</code>. ⚠️ A denominator nobody is shown is a
+denominator nobody can question, and every share is computed against it.</p>
 <p>The HAProxy row without a capture matters for the same reason. HAProxy's default <code>httplog</code> carries no
 user-agent at all, so an advice built on it would be built on nothing — <code>advise</code> says so
 on stderr instead of printing a short list that looks complete. Add the capture and the traffic

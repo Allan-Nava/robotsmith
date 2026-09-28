@@ -575,12 +575,19 @@ func cmdAdvise(args []string, out, errw io.Writer) int {
 
 	var obs []advise.Observation
 	var inputWarnings []string
+	// ⚠️ nil for --ua-counts: a `uniq -c` count has no lines to report on, and inventing a summary
+	// for it would be the kind of confident-looking number this whole milestone is about.
+	var inputSummary *report.InputSummary
 	var err error
 	switch {
 	case opt.uaCounts != "":
 		obs, err = readCounts(opt.uaCounts)
 	case opt.logFile != "":
-		obs, inputWarnings, err = readLog(opt.logFile, os.Stdin)
+		var sum LogSummary
+		obs, sum, inputWarnings, err = readLogWithSummary(opt.logFile, os.Stdin)
+		inputSummary = &report.InputSummary{
+			Format: sum.Format(), Lines: sum.Lines, Read: sum.Read, Skipped: sum.Skipped(),
+		}
 	default:
 		fmt.Fprintln(errw, "either --log or --ua-counts is required")
 		return 2
@@ -617,13 +624,25 @@ func cmdAdvise(args []string, out, errw io.Writer) int {
 		return printDiff(out, errw, a, existing, opt.host)
 	}
 	if opt.asJSON {
-		if err := report.Write(out, report.FromAdvise(a, text, len(obs))); err != nil {
+		doc := report.FromAdvise(a, text, len(obs))
+		doc.Input = inputSummary
+		if err := report.Write(out, doc); err != nil {
 			fmt.Fprintln(errw, err)
 			return 1
 		}
 		return 0
 	}
 
+	// What the parser actually did, before what it concluded: a denominator nobody is shown is a
+	// denominator nobody can question, and that is how both counting defects here stayed invisible.
+	if inputSummary != nil {
+		fmt.Fprintf(errw, "Parsed %s of %s log lines (%s)",
+			thousandsSep(inputSummary.Read), thousandsSep(inputSummary.Lines), inputSummary.Format)
+		if inputSummary.Skipped > 0 {
+			fmt.Fprintf(errw, ", %s skipped", thousandsSep(inputSummary.Skipped))
+		}
+		fmt.Fprintln(errw, ".")
+	}
 	fmt.Fprintf(errw, "Observed %d requests from %d distinct user-agents.\n", a.Total, len(obs))
 	fmt.Fprintln(errw, "\nWhat I advise, and why:")
 	for _, d := range a.Decisions {
@@ -827,43 +846,85 @@ func readCounts(path string) ([]advise.Observation, error) {
 	return obs, sc.Err()
 }
 
-// readLog extracts the user-agents from an access log. `path` may be "-" for stdin, and a gzipped
+// LogSummary is what the parser actually did with the input. ⚠️ It exists because both defects
+// this milestone fixed were invisible from the output: "Observed 8 requests from 7 distinct
+// user-agents" reads exactly like a correct answer, and an operator cannot check a denominator they
+// are never shown against a log they could count themselves.
+type LogSummary struct {
+	Lines int64 // non-empty lines seen
+	Read  int64 // lines that yielded a user-agent
+	JSON  int64 // lines read as a JSON document
+	Text  int64 // lines read by the quoted/braced-field heuristic
+}
+
+// Skipped is the number this is really for: lines that went past without contributing a
+// user-agent, which is the difference between advice built on the traffic and advice built on
+// part of it.
+func (s LogSummary) Skipped() int64 { return s.Lines - s.Read }
+
+// Format names the shape of the input, and says "mixed" rather than picking a winner: a log that
+// is half one thing and half another is a fact worth seeing, not a detail to round away.
+func (s LogSummary) Format() string {
+	switch {
+	case s.Lines == 0:
+		return "empty"
+	case s.Text == 0:
+		return "json"
+	case s.JSON == 0:
+		return "text"
+	}
+	return "mixed"
+}
+
+// readLog extracts the user-agents from an access log. It is the summary-free spelling kept for
+// the callers that do not need one.
+func readLog(path string, stdin io.Reader) ([]advise.Observation, []string, error) {
+	obs, _, warn, err := readLogWithSummary(path, stdin)
+	return obs, warn, err
+}
+
+// readLogWithSummary extracts the user-agents from an access log. `path` may be "-" for stdin, and a gzipped
 // stream is decompressed transparently — rotated logs arrive gzipped and usually down a pipe, and
 // decompressing gigabytes to disk first just to count user-agents is not a real option.
-func readLog(path string, stdin io.Reader) ([]advise.Observation, []string, error) {
+func readLogWithSummary(path string, stdin io.Reader) ([]advise.Observation, LogSummary, []string, error) {
+	var sum LogSummary
 	var src io.Reader
 	if path == "-" {
 		src = stdin
 	} else {
 		f, err := os.Open(path)
 		if err != nil {
-			return nil, nil, err
+			return nil, sum, nil, err
 		}
 		defer f.Close()
 		src = f
 	}
 	src, err := maybeGunzip(src)
 	if err != nil {
-		return nil, nil, err
+		return nil, sum, nil, err
 	}
 
 	count := map[string]int64{}
 	paths := map[string]map[string]int64{}
 	first := map[string]time.Time{}
 	last := map[string]time.Time{}
-	var lines, read int64
 	sc := scanner(src)
 	for sc.Scan() {
 		line := sc.Text()
 		if strings.TrimSpace(line) == "" {
 			continue
 		}
-		lines++
+		sum.Lines++
 		f := parseLine(line)
+		if f.isJSON {
+			sum.JSON++
+		} else {
+			sum.Text++
+		}
 		if len(f.uas) == 0 {
 			continue
 		}
-		read++
+		sum.Read++
 		path, when := f.path, f.when
 		for _, ua := range f.uas {
 			count[ua]++
@@ -885,7 +946,7 @@ func readLog(path string, stdin io.Reader) ([]advise.Observation, []string, erro
 		}
 	}
 	if err := sc.Err(); err != nil {
-		return nil, nil, err
+		return nil, sum, nil, err
 	}
 	var obs []advise.Observation
 	for ua, n := range count {
@@ -900,7 +961,7 @@ func readLog(path string, stdin io.Reader) ([]advise.Observation, []string, erro
 		obs = append(obs, o)
 	}
 	sort.Slice(obs, func(i, j int) bool { return obs[i].Requests > obs[j].Requests })
-	return obs, formatWarnings(lines, read), nil
+	return obs, sum, formatWarnings(sum), nil
 }
 
 // unreadableLineShare is how much of a log may carry no user-agent before the format itself is
@@ -914,15 +975,25 @@ const unreadableLineShare = 0.5
 // guards against is silent by nature: a format the parser cannot handle produces no error and no
 // empty output, just advice derived from a fraction of the traffic — which reads exactly like
 // advice derived from all of it.
-func formatWarnings(lines, read int64) []string {
+// ⚠️ The remedy has to match the format actually read. Telling somebody running Caddy to add a
+// `capture request header` to their HAProxy config is advice they cannot act on, and advice nobody
+// can act on is how a warning becomes noise — the same argument as a red build nobody can fix.
+func formatWarnings(sum LogSummary) []string {
+	lines, read := sum.Lines, sum.Read
 	if lines == 0 || float64(lines-read) <= unreadableLineShare*float64(lines) {
 		return nil
 	}
+	remedy := "HAProxy needs `capture request header User-Agent len 200` for `option httplog` to " +
+		"carry one; a custom `log-format` must quote it (%{+Q}) or capture it."
+	if sum.JSON > sum.Text {
+		remedy = "this log is JSON, and the user-agent is not under a key robotsmith knows " +
+			"(`request.headers.User-Agent`, `ClientRequestUserAgent`, `http_user_agent`) — " +
+			"check the field name your log format writes."
+	}
 	return []string{fmt.Sprintf(
 		"no user-agent found on %s of %s log lines: the advice below is derived from what was read, "+
-			"not from your traffic. HAProxy needs `capture request header User-Agent len 200` for "+
-			"`option httplog` to carry one; a custom `log-format` must quote it (%%{+Q}) or capture it.",
-		thousandsSep(lines-read), thousandsSep(lines))}
+			"not from your traffic. %s",
+		thousandsSep(lines-read), thousandsSep(lines), remedy)}
 }
 
 // maybeGunzip sniffs the gzip magic bytes instead of trusting the file name: rotated logs are
@@ -948,9 +1019,10 @@ func maybeGunzip(r io.Reader) (io.Reader, error) {
 // carry the user-agent, the path and the timestamp in the same document, and unmarshalling it three
 // times on a multi-gigabyte log is not a detail.
 type lineFields struct {
-	uas  []string
-	path string
-	when time.Time
+	uas    []string
+	path   string
+	when   time.Time
+	isJSON bool
 }
 
 // parseLine reads one log line, JSON or text.
@@ -962,7 +1034,9 @@ type lineFields struct {
 // computed against a denominator the tool had invented. Unread is honest; guessed is not.
 func parseLine(line string) lineFields {
 	if m, ok := jsonObject(line); ok {
-		return jsonFields(m)
+		f := jsonFields(m)
+		f.isJSON = true
+		return f
 	}
 	return lineFields{uas: userAgentsIn(line), path: pathIn(line), when: timeIn(line)}
 }

@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"compress/gzip"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -450,5 +451,138 @@ func TestALineOfOnlyFabricatedCandidatesCountsAsUnread(t *testing.T) {
 	}
 	if len(warns) == 0 {
 		t.Error("a log whose lines yielded nothing readable must say so")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// ⚠️ Both defects fixed in this milestone were invisible from the output.
+// "Observed 8 requests from 7 distinct user-agents" reads exactly like a
+// correct answer, and an operator cannot check a denominator they are never
+// shown against a log they could count themselves.
+// ---------------------------------------------------------------------------
+
+func TestReadLogReportsWhatItParsed(t *testing.T) {
+	// Four non-empty lines: two JSON we can read, one JSON with no user-agent key, one nginx.
+	log := `{"request":{"uri":"/a","headers":{"User-Agent":["` + jsonUA + `"]}}}
+{"ClientRequestPath":"/b","ClientRequestUserAgent":"` + jsonUA + `"}
+{"ClientIP":"1.2.3.4","ClientRequestPath":"/c"}
+
+` + nginxLine + `
+`
+	_, sum, _, err := readLogWithSummary("-", strings.NewReader(log))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sum.Lines != 4 {
+		t.Errorf("lines = %d, expected 4 (the blank line is not a line)", sum.Lines)
+	}
+	if sum.Read != 3 {
+		t.Errorf("read = %d, expected 3", sum.Read)
+	}
+	if sum.Skipped() != 1 {
+		t.Errorf("skipped = %d, expected 1: the JSON line with no user-agent key", sum.Skipped())
+	}
+	if sum.JSON != 3 || sum.Text != 1 {
+		t.Errorf("json/text = %d/%d, expected 3/1", sum.JSON, sum.Text)
+	}
+	if got := sum.Format(); got != "mixed" {
+		t.Errorf("format = %q, expected %q", got, "mixed")
+	}
+}
+
+func TestTheFormatIsNamedWhenTheLogIsAllOneShape(t *testing.T) {
+	for _, tc := range []struct{ want, log string }{
+		{"json", `{"ClientRequestUserAgent":"` + jsonUA + `"}` + "\n"},
+		{"text", nginxLine + "\n"},
+	} {
+		_, sum, _, err := readLogWithSummary("-", strings.NewReader(tc.log))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := sum.Format(); got != tc.want {
+			t.Errorf("format = %q, expected %q", got, tc.want)
+		}
+	}
+}
+
+func TestAdvisePrintsWhatItParsedOnStderr(t *testing.T) {
+	// ⚠️ stderr, never stdout: `advise … > robots.txt` must stay a clean file.
+	p := writeTemp(t, "access.log", strings.Repeat(nginxLine+"\n", 5))
+	code, stdout, stderr := runCLI("advise", "--log", p)
+	if code != 0 {
+		t.Fatalf("exit = %d, stderr: %s", code, stderr)
+	}
+	if !strings.Contains(stderr, "5 of 5") {
+		t.Errorf("stderr must say how many lines were read, got:\n%s", stderr)
+	}
+	if strings.Contains(stdout, "of 5") {
+		t.Errorf("the parse summary must not reach stdout:\n%s", stdout)
+	}
+}
+
+func TestTheJSONDocumentCarriesTheSameFigures(t *testing.T) {
+	// A consumer trending these numbers is exactly who notices the denominator drifting.
+	p := writeTemp(t, "access.log", strings.Repeat(nginxLine+"\n", 5))
+	code, stdout, stderr := runCLI("advise", "--json", "--log", p)
+	if code != 0 {
+		t.Fatalf("exit = %d, stderr: %s", code, stderr)
+	}
+	var doc struct {
+		Input *struct {
+			Format  string `json:"format"`
+			Lines   int64  `json:"lines"`
+			Read    int64  `json:"read"`
+			Skipped int64  `json:"skipped"`
+		} `json:"input"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &doc); err != nil {
+		t.Fatalf("not valid JSON: %v", err)
+	}
+	if doc.Input == nil {
+		t.Fatal("the document must carry what was parsed")
+	}
+	if doc.Input.Format != "text" || doc.Input.Lines != 5 || doc.Input.Read != 5 || doc.Input.Skipped != 0 {
+		t.Errorf("input = %+v, expected text 5/5/0", *doc.Input)
+	}
+}
+
+func TestUACountsCarryNoParseSummary(t *testing.T) {
+	// ⚠️ Same rule as Evidence: a `uniq -c` count has no lines to report on, and inventing a
+	// summary for it would be the kind of confident-looking number this milestone is about.
+	counts := writeTemp(t, "ua.txt", "10 "+jsonUA+"\n")
+	code, stdout, stderr := runCLI("advise", "--json", "--ua-counts", counts)
+	if code != 0 {
+		t.Fatalf("exit = %d, stderr: %s", code, stderr)
+	}
+	if strings.Contains(stdout, `"input"`) {
+		t.Errorf("a count file has no parse summary to carry:\n%s", stdout)
+	}
+}
+
+func TestTheWarningNamesARemedyForTheFormatActuallyRead(t *testing.T) {
+	// ⚠️ Telling somebody running Caddy to edit their HAProxy config is advice they cannot act on,
+	// and a warning nobody can act on becomes noise — the same argument as a red build nobody can
+	// fix.
+	jsonNoUA := strings.Repeat(`{"ClientIP":"1.2.3.4","ClientRequestPath":"/a"}`+"\n", 10)
+	_, _, warns, err := readLogWithSummary("-", strings.NewReader(jsonNoUA))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(warns) != 1 {
+		t.Fatalf("warnings = %q, expected one", warns)
+	}
+	if strings.Contains(warns[0], "HAProxy") {
+		t.Errorf("a JSON log was told to fix its HAProxy config:\n%s", warns[0])
+	}
+	if !strings.Contains(warns[0], "ClientRequestUserAgent") {
+		t.Errorf("the remedy must name the keys we do look under:\n%s", warns[0])
+	}
+
+	haproxy := strings.Repeat(`Sep  1 10:00:00 lb haproxy[1]: 1.2.3.4:1 [01/Sep/2026:10:00:00.123] fe be/s1 0/0/1/2/3 200 12 - - ---- 1/1/1/1/0 0/0 "GET /a HTTP/1.1"`+"\n", 10)
+	if _, _, warns, err = readLogWithSummary("-", strings.NewReader(haproxy)); err != nil {
+		t.Fatal(err)
+	}
+	if len(warns) != 1 || !strings.Contains(warns[0], "capture request header") {
+		t.Errorf("a text log must still get the capture remedy, got %q", warns)
 	}
 }

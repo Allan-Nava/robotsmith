@@ -255,6 +255,19 @@ user-agents are irregular, and dropping a genuine crawler is the worse failure: 
 advice, so nobody ever decides about it. A line whose candidates are all refused counts as unread,
 which is what makes the warning fire.
 
+`advise` says what it parsed before saying what it concluded:
+
+```
+Parsed 4,812 of 5,000 log lines (json), 188 skipped.
+Observed 61,204 requests from 318 distinct user-agents.
+```
+
+⚠️ That first line exists because a denominator nobody is shown is a denominator nobody can
+question — every share here is computed against it, and `AutoBlockShare` decides against those
+shares. The same figures are in the `--json` document under `input`, so a pipeline can trend them:
+a log that suddenly reads half as many lines is worth knowing about. It is absent for
+`--ua-counts`, which has no lines to report on.
+
 The counts are what must always work; paths and timestamps are extra, and a format that carries no
 date produces a report with less in it rather than an error.
 
