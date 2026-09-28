@@ -7,6 +7,88 @@ consumers get exactly what a tag says. Pushing is always the maintainer's call, 
 
 ## [Unreleased]
 
+_Nothing yet._
+
+## [0.7.0] — 2026-09-28
+
+**Count what actually happened** (milestone `v0.7.0`) — every number this tool prints is a share,
+and `MinCandidateShare` and `AutoBlockShare` decide against those shares. On a JSON access log the
+denominator was not merely approximate, it was invented: three lines counted as eight requests and
+put the crawler in them at 62.5% where the truth was 100%. Fixed at three levels — the formats it
+showed up in, the shape of the mistake, and the invisibility that let it survive.
+
+⚠️ This release also carries **v0.6.0 — The three lines actually work**, a milestone completed but
+never tagged: `uses: Allan-Nava/robotsmith@v1` opened every document while no `v1` tag had ever been
+pushed, so the example that is the whole pitch of the action failed on first use. There is no
+`0.6.0` release; its work ships here, and `v0` — the reference the documents now advertise — comes
+into existence with this tag.
+
+### Added
+- **`advise` says what it parsed**, before what it concluded: `Parsed 4,812 of 5,000 log lines
+  (json), 188 skipped.` on stderr, and the same figures in the `--json` document under `input`
+  (`format`, `lines`, `read`, `skipped`). ⚠️ Both counting defects fixed in this milestone were
+  invisible from the output — *"Observed 8 requests from 7 distinct user-agents"* reads exactly
+  like a correct answer — and a denominator nobody is shown is a denominator nobody can question.
+  A mixed log says `mixed` rather than picking a winner. ⚠️ Absent for `--ua-counts`, which has no
+  lines to report on: the same rule the evidence follows.
+- **JSON access logs are read as JSON**: Caddy (`request.headers.User-Agent`, an array, because a
+  header may legally repeat), Cloudflare Logpush (`ClientRequestUserAgent`) and nginx /
+  ingress-nginx (`http_user_agent`), with the path and the timestamp alongside so the evidence
+  behind a `REVIEW` keeps working. ⚠️ A JSON line is **never** retried with the text heuristic when
+  it yields nothing — that fallback is the defect — so a log keying the user-agent somewhere we do
+  not know is reported unread and the warning fires. ⚠️ Validity decides what is JSON, never the
+  first character: HAProxy wraps its captured headers in `{braces}`, so a line can open with `{`
+  and be plain text.
+- **The moving major tag exists.** A stable release now force-moves `vX` onto itself, so
+  `uses: Allan-Nava/robotsmith@v0` keeps working across releases and `@v0.5.1` stays available for
+  a build that has to be reproducible. ⚠️ Force-moved, not merely created: a tag created once stays
+  frozen on the release it was cut at while looking maintained. It runs **last**, so a release that
+  failed to publish cannot drag every consumer onto assets that do not exist, and it is skipped for
+  prereleases, because `v0` has to mean the newest *stable* release.
+- **A gate on the reference the documents advertise.** It is stated in four places and was wrong in
+  three. The expected value is not typed into the test: it is derived from the newest released
+  section of this file, the same trick as counting the `check` cases from the tables — so reaching
+  `1.0.0` forces the documents to `@v1` instead of leaving them behind. A second test refuses a
+  release workflow that advertises a major tag without maintaining it.
+- **`binary:` on the action**, for one caller: this repository's CI, which has to exercise
+  `action.yml` against the branch under review. ⚠️ It skips the download **and** the checksum
+  verification, so it is documented as the wrong answer for everyone else — pin `version` instead.
+
+### Changed
+- **The documents advertise `@v0`**, which is the major this project actually ships, and say what
+  it means: it moves across `0.x` minors, and a `0.x` minor is allowed to change behaviour — the
+  exit codes and the flags are the part treated as a contract. Pin an exact version for
+  reproducibility.
+- **CI runs `@v0`, not `./`, in a job of its own.** Running the published reference is the whole
+  point; using a local path is precisely how `@v1` stayed advertised and non-existent. ⚠️ It has to
+  be a separate job: GitHub resolves every `uses:` during *Prepare all required actions*, before a
+  single step runs, so `continue-on-error` on the step never applies — as a step inside `test` an
+  unresolvable `@v0` failed the branch-protection required check at setup and nothing could merge.
+  A test now refuses a required job that references our own published action. ⚠️ And the job is
+  **gated on the tag existing**, because a step-level `if:` does not prevent resolution either —
+  only not starting the job does. Before the first release moves `v0` it is *skipped*, not red: a
+  red nobody can act on is one everybody learns to ignore.
+- **CI dogfoods the action twice and blocks on only one.** Against the branch's own binary it
+  checks `action.yml`'s logic, and that blocks — it is within this repo's control. Against the
+  published release it checks the install path (asset discovery, checksum verification), and that
+  does **not** block, because it depends on an artifact no commit here can change. The old single
+  run was pinned to `releases/latest`, which is how six consecutive red CI runs went unacted on
+  between 0.4.0 and 0.5.1: `--format` had shipped in the branch, the published binary was 0.2.0,
+  and nothing anybody committed here could have turned it green.
+- **`main` is protected and changes land through a pull request**, with the `test` check required
+  to be green. Zero approvals are required — a solo maintainer cannot approve their own PR, so
+  demanding one would block everything — and administrators are included, because a protection the
+  only active account can ignore is advice. ⚠️ Only `test` is required: `image` and `sync` are
+  path-filtered and a required check that never starts leaves a PR waiting forever. Reviews are
+  possible but not required — GitHub does not let anyone approve their own pull request, so on a
+  single-maintainer repo a required approval would block every merge. What gives a review teeth
+  instead: **conversations must be resolved** before merging, and an approval is dismissed when new
+  commits arrive.
+- **The unreadable-log warning names a remedy that fits the format read.** Telling somebody running
+  Caddy to add `capture request header` to their HAProxy config is advice they cannot act on, and a
+  warning nobody can act on becomes noise — the same argument as a red build nobody can fix. A JSON
+  log is now told which keys are looked under.
+
 ### Fixed
 - **A candidate that cannot be a user-agent is no longer counted as one.** Reading JSON as JSON
   fixed the formats we know about; it left the *shape* of the mistake in place, because the text
@@ -26,87 +108,6 @@ consumers get exactly what a tag says. Pushing is always the maintainer's call, 
   `AutoBlockShare` decide against those shares — an invented denominator moves crawlers across
   thresholds. The `unreadableLineShare` warning stayed silent throughout, because the parser
   believed it had succeeded.
-
-### Added
-- **`advise` says what it parsed**, before what it concluded: `Parsed 4,812 of 5,000 log lines
-  (json), 188 skipped.` on stderr, and the same figures in the `--json` document under `input`
-  (`format`, `lines`, `read`, `skipped`). ⚠️ Both counting defects fixed in this milestone were
-  invisible from the output — *"Observed 8 requests from 7 distinct user-agents"* reads exactly
-  like a correct answer — and a denominator nobody is shown is a denominator nobody can question.
-  A mixed log says `mixed` rather than picking a winner. ⚠️ Absent for `--ua-counts`, which has no
-  lines to report on: the same rule the evidence follows.
-- **The unreadable-log warning names a remedy that fits the format read.** Telling somebody running
-  Caddy to add `capture request header` to their HAProxy config is advice they cannot act on, and a
-  warning nobody can act on becomes noise — the same argument as a red build nobody can fix. A JSON
-  log is now told which keys are looked under.
-- **JSON access logs are read as JSON**: Caddy (`request.headers.User-Agent`, an array, because a
-  header may legally repeat), Cloudflare Logpush (`ClientRequestUserAgent`) and nginx /
-  ingress-nginx (`http_user_agent`), with the path and the timestamp alongside so the evidence
-  behind a `REVIEW` keeps working. ⚠️ A JSON line is **never** retried with the text heuristic when
-  it yields nothing — that fallback is the defect — so a log keying the user-agent somewhere we do
-  not know is reported unread and the warning fires. ⚠️ Validity decides what is JSON, never the
-  first character: HAProxy wraps its captured headers in `{braces}`, so a line can open with `{`
-  and be plain text.
-
-### Changed
-- **`main` is protected and changes land through a pull request**, with the `test` check required
-  to be green. Zero approvals are required — a solo maintainer cannot approve their own PR, so
-  demanding one would block everything — and administrators are included, because a protection the
-  only active account can ignore is advice. ⚠️ Only `test` is required: `image` and `sync` are
-  path-filtered and a required check that never starts leaves a PR waiting forever. Reviews are
-  possible but not required — GitHub does not let anyone approve their own pull request, so on a
-  single-maintainer repo a required approval would block every merge. What gives a review teeth
-  instead: **conversations must be resolved** before merging, and an approval is dismissed when new
-  commits arrive.
-
-**The three lines actually work** (milestone `v0.6.0`) — every document opened with
-`uses: Allan-Nava/robotsmith@v1` and no `v1` tag had ever been pushed, so the example that is the
-entire pitch of the action failed on first use. It survived because this repo's CI ran the action as
-`./`: it never once ran the reference it recommends to everyone else.
-
-### Added
-- **The moving major tag exists.** A stable release now force-moves `vX` onto itself, so
-  `uses: Allan-Nava/robotsmith@v0` keeps working across releases and `@v0.5.1` stays available for
-  a build that has to be reproducible. ⚠️ Force-moved, not merely created: a tag created once stays
-  frozen on the release it was cut at while looking maintained. It runs **last**, so a release that
-  failed to publish cannot drag every consumer onto assets that do not exist, and it is skipped for
-  prereleases, because `v0` has to mean the newest *stable* release.
-- **A gate on the reference the documents advertise.** It is stated in four places and was wrong in
-  three. The expected value is not typed into the test: it is derived from the newest released
-  section of this file, the same trick as counting the `check` cases from the tables — so reaching
-  `1.0.0` forces the documents to `@v1` instead of leaving them behind. A second test refuses a
-  release workflow that advertises a major tag without maintaining it.
-
-### Changed
-- **The documents advertise `@v0`**, which is the major this project actually ships, and say what
-  it means: it moves across `0.x` minors, and a `0.x` minor is allowed to change behaviour — the
-  exit codes and the flags are the part treated as a contract. Pin an exact version for
-  reproducibility.
-- **CI runs `@v0`, not `./`, in a job of its own.** Running the published reference is the whole
-  point; using a local path is precisely how `@v1` stayed advertised and non-existent. ⚠️ It has to
-  be a separate job: GitHub resolves every `uses:` during *Prepare all required actions*, before a
-  single step runs, so `continue-on-error` on the step never applies — as a step inside `test` an
-  unresolvable `@v0` failed the branch-protection required check at setup and nothing could merge.
-  A test now refuses a required job that references our own published action. ⚠️ And the job is
-  **gated on the tag existing**, because a step-level `if:` does not prevent resolution either —
-  only not starting the job does. Before the first release moves `v0` it is *skipped*, not red: a
-  red nobody can act on is one everybody learns to ignore.
-
-### Added
-- **`binary:` on the action**, for one caller: this repository's CI, which has to exercise
-  `action.yml` against the branch under review. ⚠️ It skips the download **and** the checksum
-  verification, so it is documented as the wrong answer for everyone else — pin `version` instead.
-
-### Changed
-- **CI dogfoods the action twice and blocks on only one.** Against the branch's own binary it
-  checks `action.yml`'s logic, and that blocks — it is within this repo's control. Against the
-  published release it checks the install path (asset discovery, checksum verification), and that
-  does **not** block, because it depends on an artifact no commit here can change. The old single
-  run was pinned to `releases/latest`, which is how six consecutive red CI runs went unacted on
-  between 0.4.0 and 0.5.1: `--format` had shipped in the branch, the published binary was 0.2.0,
-  and nothing anybody committed here could have turned it green.
-
-### Fixed
 - **The `brew` job's Linux leg installs Homebrew before using it.** GitHub's Ubuntu images do not
   ship it, so that half of the matrix died on `brew: command not found` the first time it ever ran —
   it had been gated off until a release existed, and 0.5.1 was that release. macOS was green
@@ -361,7 +362,8 @@ installable everywhere, and the automation that keeps all of it honest.
 - `internal/matcher`: RFC 9309 parser and evaluation (longest match, `Allow` wins ties).
 - Exit codes `0` / `1` / `2` / `4` as a CI contract.
 
-[Unreleased]: https://github.com/Allan-Nava/robotsmith/compare/v0.5.1...HEAD
+[Unreleased]: https://github.com/Allan-Nava/robotsmith/compare/v0.7.0...HEAD
+[0.7.0]: https://github.com/Allan-Nava/robotsmith/compare/v0.5.1...v0.7.0
 [0.5.1]: https://github.com/Allan-Nava/robotsmith/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/Allan-Nava/robotsmith/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/Allan-Nava/robotsmith/compare/v0.3.0...v0.4.0
