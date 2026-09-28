@@ -43,6 +43,7 @@ disagree with the items all fail the build. The counts below are therefore check
 | [v0.4.0 — Your policy, verified continuously](#v040--your-policy-verified-continuously) ✅ | overridable policy, a closed loop, one-line CI, a report you can send | 0 | 6 |
 | [v0.5.0 — Trust the input, date the opinion](#v050--trust-the-input-date-the-opinion) ✅ | read the logs people actually have, and say how old the answers are | 0 | 2 |
 | [v0.6.0 — The three lines actually work](#v060--the-three-lines-actually-work) ✅ | run what we tell other people to run | 0 | 2 |
+| [v0.7.0 — Count what actually happened](#v070--count-what-actually-happened) | a share is the whole argument, so the denominator has to be true | 3 | 0 |
 | [Backlog (unscheduled)](#backlog-unscheduled) | worth doing, not worth scheduling | 0 | 1 |
 
 ---
@@ -517,6 +518,80 @@ so the advertised path is exercised for real.
 **Done when:** a test fails when any document advertises a reference other than the major this
 project actually ships, CI runs that reference, and the check that would have caught the original
 defect is red on the original defect.
+
+# v0.7.0 — Count what actually happened
+
+**Goal**: every number this tool prints is a share, and a share is the whole argument for blocking
+something. `MinCandidateShare` and `AutoBlockShare` key off those percentages, so a denominator that
+is wrong does not make the advice vaguer — it moves crawlers across thresholds. On a JSON access log
+the denominator is wrong today, and nothing says so.
+
+⚠️ The evidence, measured on three lines (Caddy, Cloudflare Logpush, and an ALB line), is that
+`userAgentsIn` does not *miss* the user-agent — it **invents** two more next to it. From one Caddy
+line it returns the request path, the real user-agent, and a raw JSON fragment:
+
+```
+"/news/a"
+"Mozilla/5.0 (compatible; GPTBot/1.4)"
+"\"User-Agent\":[\"Mozilla/5.0 (compatible; GPTBot/1.4)\"]"
+```
+
+Three log lines become "8 requests from 7 distinct user-agents", and GPTBot is reported at 62.5%
+where the truth is 100%. The `unreadableLineShare` warning added in 0.5.0 stays silent throughout,
+because the parser believes it succeeded. This is the worse half of the same family of defect 0.5.0
+opened: a format we cannot read is now announced, and a format we *misread* is not.
+
+### `json-log-formats` — read the JSON access logs people actually run
+
+- **status**: open
+- **priority**: high
+- **labels**: advise, correctness
+- **milestone**: v0.7.0 — Count what actually happened
+
+Caddy logs JSON by default, Cloudflare Logpush and the common Kubernetes ingress configurations do
+too, and in all of them the user-agent is a value at a known key rather than a field between
+quotes. Splitting those lines on `"` is not a heuristic that degrades, it is one that fabricates.
+A line that parses as a JSON object has to be read as one, with the user-agent taken from the key
+paths those products actually use (`request.headers.User-Agent`, `ClientRequestUserAgent`,
+`http_user_agent`), and the request path and timestamp alongside it so the evidence keeps working.
+
+**Done when:** a fixture per product (Caddy, Cloudflare Logpush, ingress-nginx JSON) yields exactly
+one user-agent per line and the right request count, the existing nginx and HAProxy fixtures still
+pass unchanged, and a JSON line whose user-agent key is absent is counted as unread rather than
+guessed at.
+
+### `no-fabricated-user-agents` — refuse a candidate that cannot be a user-agent
+
+- **status**: open
+- **priority**: high
+- **labels**: advise, correctness
+- **milestone**: v0.7.0 — Count what actually happened
+
+Reading JSON properly fixes the formats we know about; it does not fix the shape of the mistake.
+The quoted-field heuristic accepts a request path and a nested JSON fragment because the only tests
+it applies are "contains a slash or a space" and "is not a request line" — so any format that
+quotes anything else keeps inflating the totals, silently, in the direction that looks like more
+traffic. ⚠️ Whatever guard goes in has to stay generous about *real* user-agents, which are
+notoriously irregular: refusing a genuine crawler is a worse outcome than counting one stray field.
+
+**Done when:** a candidate that is a bare path, a JSON fragment or a key-value pair is rejected by a
+test built from the real lines above, every user-agent in the existing fixtures is still accepted,
+and a line whose candidates are all rejected counts as unread so the 0.5.0 warning can see it.
+
+### `say-what-was-parsed` — report the format read and the lines counted
+
+- **status**: open
+- **priority**: medium
+- **labels**: advise, ux
+- **milestone**: v0.7.0 — Count what actually happened
+
+The defect above was invisible from the output: "Observed 8 requests from 7 distinct user-agents"
+reads exactly like a correct answer. An operator cannot check a denominator they are never shown
+against a log they can count themselves, and `--json` consumers cannot trend what they cannot see.
+
+**Done when:** `advise` reports on stderr which format was detected, how many lines were read and
+how many were skipped, the same figures appear in the `--json` document, and a test asserts they
+match the fixture rather than merely being present.
 
 # Backlog (unscheduled)
 
