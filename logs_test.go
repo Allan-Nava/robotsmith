@@ -380,3 +380,75 @@ func TestANonJSONLineStartingWithABraceIsStillReadAsText(t *testing.T) {
 		t.Fatalf("got %+v, expected the HAProxy capture to still be read", obs)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// ⚠️ Reading JSON as JSON fixed the formats we know about. It did not fix the
+// SHAPE of the mistake: the text heuristic still accepts a candidate merely for
+// containing a slash or a space, so any format quoting something else keeps
+// inflating the totals — silently, and always in the direction of more traffic.
+// ---------------------------------------------------------------------------
+
+func TestAFabricatedCandidateIsNotCountedAsACrawler(t *testing.T) {
+	// ⚠️ Whole lines, not a synthetic wrapper: the JSON fragment reaches the candidate list through
+	// the HAProxy {brace} capture, so wrapping it in quotes would test a path the code never takes
+	// and pass for the wrong reason.
+	for _, tc := range []struct{ why, line string }{
+		{
+			"a request path is not a crawler",
+			`1.2.3.4 - - [01/Sep/2026:10:00:00 +0000] "/news/a" 200 12`,
+		},
+		{
+			// A JSON document that does not parse (truncated by the log rotator, say) falls through
+			// to the text heuristic, where the braces hand the whole body over as one candidate.
+			"a fragment of a quoted structure is not a crawler",
+			`lb haproxy[1]: {"ClientIP":"1.2.3.4","ClientRequestPath":"/news/b"} 200`,
+		},
+	} {
+		t.Run(tc.why, func(t *testing.T) {
+			if got := userAgentsIn(tc.line); len(got) != 0 {
+				t.Errorf("accepted %q as a user-agent — it inflates the denominator every share is "+
+					"computed against, and AutoBlockShare decides against those shares", got)
+			}
+		})
+	}
+}
+
+func TestEveryRealUserAgentIsStillAccepted(t *testing.T) {
+	// ⚠️ The guard above must stay GENEROUS. User-agents are notoriously irregular, and dropping a
+	// genuine crawler is the worse failure: it disappears from the advice entirely, so nobody ever
+	// decides about it. This list is the real strings used elsewhere in this suite.
+	for _, ua := range []string{
+		"Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)",
+		"Mozilla/5.0 (compatible; GPTBot/1.4; +https://openai.com/gptbot)",
+		"facebookexternalhit/1.1",
+		"Mozilla/5.0 AppleWebKit (compatible; ChatGPT-User/1.0; +openai.com/bot)",
+		"Mozilla/5.0 (compatible; SemrushBot/7~bl)",
+		"Mozilla/5.0 (compatible; YisouSpider/5.0; +http://www.yisou.com)",
+		"okhttp/5.4.0",
+		"curl/8.4.0",
+		"SomeApp/1 CFNetwork/3860 Darwin/25.6.0",
+		"Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/148",
+		"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko)",
+	} {
+		if got := userAgentsIn(`1.2.3.4 - - "GET /a HTTP/1.1" 200 12 "-" "` + ua + `"`); len(got) != 1 || got[0] != ua {
+			t.Errorf("real user-agent %q was dropped (got %q): losing a crawler is worse than "+
+				"counting a stray field", ua, got)
+		}
+	}
+}
+
+func TestALineOfOnlyFabricatedCandidatesCountsAsUnread(t *testing.T) {
+	// Rejecting them is half the job: the line must then be UNREAD, so the 0.5.0 warning sees it
+	// rather than the run quietly advising on nothing.
+	line := `- - - "/news/a" 200 12`
+	obs, warns, err := readLog("-", strings.NewReader(strings.Repeat(line+"\n", 10)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(obs) != 0 {
+		t.Fatalf("got %+v, expected nothing", obs)
+	}
+	if len(warns) == 0 {
+		t.Error("a log whose lines yielded nothing readable must say so")
+	}
+}

@@ -335,6 +335,11 @@ nothing. That fallback is why the JSON formats had to be handled at all: splitti
 JSON fragment as three "user-agents". Three such lines used to count as <b>eight</b> requests, and
 the crawler in them came out at 62.5% instead of 100% — and a share is what the auto-block threshold
 decides against. A key we do not know is reported unread, not guessed at.</p>
+<p>Whatever the format, a candidate that <b>demonstrably is not</b> a user-agent is refused: one
+starting with <code>/</code> (a request path) and one containing a double quote (a fragment of a
+quoted structure, not a value). ⚠️ Deliberately a list of what a user-agent is <em>not</em>, never a
+pattern one must match — real user-agents are irregular, and dropping a genuine crawler is the worse
+failure: it vanishes from the advice, so nobody ever decides about it.</p>
 <p>The HAProxy row without a capture matters for the same reason. HAProxy's default <code>httplog</code> carries no
 user-agent at all, so an advice built on it would be built on nothing — <code>advise</code> says so
 on stderr instead of printing a short list that looks complete. Add the capture and the traffic

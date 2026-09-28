@@ -413,6 +413,22 @@ became a crawler called `/a`.
 `{braces}`, so a line can open with `{` and be plain text — deciding on the brace alone would have
 lost every HAProxy log to fix the Caddy ones.
 
+### A list of what a user-agent is not, never a pattern it must match
+
+The obvious way to stop counting request paths as crawlers is to require a candidate to *look like*
+a user-agent. It is the wrong way round, and the asymmetry that governs the whole tool says why: a
+stray field costs an inflated denominator, while a rejected real crawler vanishes from the advice
+entirely — nobody ever sees it, so nobody ever decides about it. One error is visible in a number;
+the other is invisible by construction.
+
+So the guard is a short list of things a user-agent demonstrably is not. A leading `/`, because that
+is a request path and no user-agent begins with a slash. A double quote anywhere, because a field
+pulled from between quotes or braces cannot contain one — its presence means we are holding a
+fragment of a structure, not a value. Both were observed, not imagined.
+
+⚠️ Additions to that list belong to the same standard: a rule that rejects a shape somebody's real
+crawler might have does not go in, however tidy it looks.
+
 ## Non-goals
 
 Stated, not forgotten:
@@ -439,6 +455,9 @@ Stated, not forgotten:
   schemas, `lint --strict`, logs from stdin and gzip, CLI integration tests on the exit-code
   contract, release automation with the version from the tag, and a gate that keeps the docs
   honest. Each decision above; backlog in [BACKLOG.md](BACKLOG.md).
+- **2026-09-28** — a candidate that cannot be a user-agent (a leading `/`, an embedded quote) is
+  refused, stated as what a user-agent is *not*. Reasoning above under *A list of what a user-agent
+  is not*.
 - **2026-09-28** — JSON access logs (Caddy, Cloudflare Logpush, ingress-nginx) are read as JSON,
   by a named list of key paths and with no fallback to the text heuristic. Reasoning above under
   *A named list of keys, and no fallback*.
