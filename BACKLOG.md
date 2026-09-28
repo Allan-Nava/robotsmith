@@ -43,7 +43,7 @@ disagree with the items all fail the build. The counts below are therefore check
 | [v0.4.0 — Your policy, verified continuously](#v040--your-policy-verified-continuously) ✅ | overridable policy, a closed loop, one-line CI, a report you can send | 0 | 6 |
 | [v0.5.0 — Trust the input, date the opinion](#v050--trust-the-input-date-the-opinion) ✅ | read the logs people actually have, and say how old the answers are | 0 | 2 |
 | [v0.6.0 — The three lines actually work](#v060--the-three-lines-actually-work) ✅ | run what we tell other people to run | 0 | 2 |
-| [v0.7.0 — Count what actually happened](#v070--count-what-actually-happened) | a share is the whole argument, so the denominator has to be true | 3 | 0 |
+| [v0.7.0 — Count what actually happened](#v070--count-what-actually-happened) | a share is the whole argument, so the denominator has to be true | 2 | 1 |
 | [Backlog (unscheduled)](#backlog-unscheduled) | worth doing, not worth scheduling | 0 | 1 |
 
 ---
@@ -543,10 +543,11 @@ opened: a format we cannot read is now announced, and a format we *misread* is n
 
 ### `json-log-formats` — read the JSON access logs people actually run
 
-- **status**: open
+- **status**: done
 - **priority**: high
 - **labels**: advise, correctness
 - **milestone**: v0.7.0 — Count what actually happened
+- **ref**: `parseLine` / `jsonFields` in [main.go](main.go), `TestJSONLogsYieldExactlyOneUserAgentPerLine`
 
 Caddy logs JSON by default, Cloudflare Logpush and the common Kubernetes ingress configurations do
 too, and in all of them the user-agent is a value at a known key rather than a field between

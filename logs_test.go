@@ -260,3 +260,123 @@ func TestAdviseSaysSoWhenItCouldNotReadTheFormat(t *testing.T) {
 		t.Errorf("the warning must reach the operator on stderr:\n%s", stderr)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// JSON access logs. ⚠️ The defect these guard against is not a missing format:
+// splitting a JSON line on `"` FABRICATES user-agents — the request path and a
+// raw JSON fragment both look like candidates — which inflates the denominator
+// every share is computed against, and `AutoBlockShare` keys off those shares.
+// ---------------------------------------------------------------------------
+
+const jsonUA = "Mozilla/5.0 (compatible; GPTBot/1.4; +https://openai.com/gptbot)"
+
+func TestJSONLogsYieldExactlyOneUserAgentPerLine(t *testing.T) {
+	for _, tc := range []struct{ product, line string }{
+		{
+			// Caddy's default access log: the UA is an ARRAY under request.headers.
+			"caddy",
+			`{"level":"info","ts":1790000000.5,"logger":"http.log.access","msg":"handled request",` +
+				`"request":{"remote_ip":"1.2.3.4","method":"GET","uri":"/news/a",` +
+				`"headers":{"User-Agent":["` + jsonUA + `"],"Accept-Encoding":["gzip"]}},"status":200}`,
+		},
+		{
+			"cloudflare logpush",
+			`{"ClientIP":"1.2.3.4","ClientRequestPath":"/news/a","ClientRequestUserAgent":"` + jsonUA + `",` +
+				`"EdgeStartTimestamp":"2026-09-28T10:00:00Z","EdgeResponseStatus":200}`,
+		},
+		{
+			"ingress-nginx json",
+			`{"time_iso8601":"2026-09-28T10:00:00+00:00","request_uri":"/news/a","status":200,` +
+				`"http_user_agent":"` + jsonUA + `","http_referer":"-"}`,
+		},
+	} {
+		t.Run(tc.product, func(t *testing.T) {
+			obs, warns, err := readLog("-", strings.NewReader(tc.line+"\n"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(obs) != 1 {
+				got := make([]string, 0, len(obs))
+				for _, o := range obs {
+					got = append(got, o.UA)
+				}
+				t.Fatalf("got %d user-agents %q, expected exactly one: a JSON line read by "+
+					"splitting on quotes invents them", len(obs), got)
+			}
+			if obs[0].UA != jsonUA {
+				t.Errorf("UA = %q, expected %q", obs[0].UA, jsonUA)
+			}
+			if obs[0].Requests != 1 {
+				t.Errorf("requests = %d, expected 1: the denominator is what every share is "+
+					"computed against", obs[0].Requests)
+			}
+			if len(warns) != 0 {
+				t.Errorf("a line we can read must not warn, got %q", warns)
+			}
+		})
+	}
+}
+
+func TestJSONLogKeepsTheDenominatorHonest(t *testing.T) {
+	// The whole point. Three lines from three products, one crawler: 3 requests at 100%.
+	// Before this, the same three lines read as 8 requests from 7 user-agents and put the
+	// crawler at 62.5% — a number that decides whether it crosses AutoBlockShare.
+	log := `{"ts":1790000000.5,"request":{"uri":"/a","headers":{"User-Agent":["` + jsonUA + `"]}}}
+{"ClientRequestPath":"/b","ClientRequestUserAgent":"` + jsonUA + `"}
+{"request_uri":"/c","http_user_agent":"` + jsonUA + `"}
+`
+	obs, _, err := readLog("-", strings.NewReader(log))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(obs) != 1 || obs[0].Requests != 3 {
+		t.Fatalf("got %+v, expected one user-agent with 3 requests", obs)
+	}
+}
+
+func TestAJSONLineWithNoUserAgentIsUnreadNotGuessed(t *testing.T) {
+	// ⚠️ No falling back to the quote heuristic for a line we know is JSON: that is exactly how a
+	// path became a crawler. Unread is honest and lets the 0.5.0 warning see it.
+	log := strings.Repeat(`{"ClientIP":"1.2.3.4","ClientRequestPath":"/news/a","EdgeResponseStatus":200}`+"\n", 10)
+	obs, warns, err := readLog("-", strings.NewReader(log))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(obs) != 0 {
+		t.Fatalf("got %+v, expected nothing: no user-agent key means we did not read one", obs)
+	}
+	if len(warns) == 0 {
+		t.Error("a log we could not read must say so")
+	}
+}
+
+func TestJSONLogCarriesPathAndTime(t *testing.T) {
+	// The evidence behind a REVIEW has to keep working on these formats too.
+	log := `{"ts":1790000000,"request":{"uri":"/news/a?p=2","headers":{"User-Agent":["` + jsonUA + `"]}}}
+{"ts":1790003600,"request":{"uri":"/news/a","headers":{"User-Agent":["` + jsonUA + `"]}}}
+`
+	obs, _, err := readLog("-", strings.NewReader(log))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ev := obs[0].Evidence
+	if ev == nil || len(ev.TopPaths) != 1 || ev.TopPaths[0].Path != "/news/a" {
+		t.Fatalf("top paths = %+v, expected /news/a twice (the query string is dropped)", ev)
+	}
+	if ev.Last.Sub(ev.First) != time.Hour {
+		t.Errorf("span = %v, expected 1h", ev.Last.Sub(ev.First))
+	}
+}
+
+func TestANonJSONLineStartingWithABraceIsStillReadAsText(t *testing.T) {
+	// ⚠️ HAProxy's captured headers are wrapped in {braces}: a line can begin with `{` and not be
+	// JSON at all. Deciding by the first character alone would lose every HAProxy log.
+	line := `{` + jsonUA + `} "GET /a HTTP/1.1" 200`
+	obs, _, err := readLog("-", strings.NewReader(line+"\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(obs) != 1 || obs[0].UA != jsonUA {
+		t.Fatalf("got %+v, expected the HAProxy capture to still be read", obs)
+	}
+}

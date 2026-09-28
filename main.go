@@ -11,9 +11,11 @@ package main
 import (
 	"bufio"
 	"compress/gzip"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -857,14 +859,13 @@ func readLog(path string, stdin io.Reader) ([]advise.Observation, []string, erro
 			continue
 		}
 		lines++
-		uas := userAgentsIn(line)
-		if len(uas) == 0 {
+		f := parseLine(line)
+		if len(f.uas) == 0 {
 			continue
 		}
 		read++
-		path := pathIn(line)
-		when := timeIn(line)
-		for _, ua := range uas {
+		path, when := f.path, f.when
+		for _, ua := range f.uas {
 			count[ua]++
 			if path != "" {
 				if paths[ua] == nil {
@@ -941,6 +942,143 @@ func maybeGunzip(r io.Reader) (io.Reader, error) {
 		return zr, nil
 	}
 	return br, nil
+}
+
+// lineFields is what one log line yielded. ⚠️ It exists so a line is parsed ONCE: the JSON formats
+// carry the user-agent, the path and the timestamp in the same document, and unmarshalling it three
+// times on a multi-gigabyte log is not a detail.
+type lineFields struct {
+	uas  []string
+	path string
+	when time.Time
+}
+
+// parseLine reads one log line, JSON or text.
+//
+// ⚠️ A JSON line is read as JSON and NOT retried with the text heuristic when it yields nothing.
+// That fallback is precisely the defect: splitting `{"request":{"uri":"/news/a", …}}` on quotes
+// returns the path, the log message and a raw JSON fragment as three "user-agents", so three lines
+// were counted as eight requests and a crawler's share — the number AutoBlockShare keys off — was
+// computed against a denominator the tool had invented. Unread is honest; guessed is not.
+func parseLine(line string) lineFields {
+	if m, ok := jsonObject(line); ok {
+		return jsonFields(m)
+	}
+	return lineFields{uas: userAgentsIn(line), path: pathIn(line), when: timeIn(line)}
+}
+
+// jsonObject decodes a line that is a JSON object. ⚠️ Validity decides, never the first character:
+// HAProxy writes its captured headers in {braces}, so a line can open with `{` and be plain text.
+// The cheap shape test first, because a text log must not pay for a failed unmarshal per line.
+func jsonObject(line string) (map[string]any, bool) {
+	t := strings.TrimSpace(line)
+	if len(t) < 2 || t[0] != '{' || t[len(t)-1] != '}' {
+		return nil, false
+	}
+	var m map[string]any
+	if json.Unmarshal([]byte(t), &m) != nil {
+		return nil, false
+	}
+	return m, true
+}
+
+// The key paths the JSON access logs people actually run put each field at. Deliberately a SHORT,
+// named list rather than a search for anything resembling a user-agent: a guess that lands on the
+// wrong key is how this went wrong in the first place, and a format we do not know is better
+// reported unread (the operator then sees the warning) than silently miscounted.
+var (
+	jsonUAKeys = [][]string{
+		{"request", "headers", "User-Agent"}, // Caddy
+		{"ClientRequestUserAgent"},           // Cloudflare Logpush
+		{"http_user_agent"},                  // nginx / ingress-nginx JSON
+	}
+	jsonPathKeys = [][]string{
+		{"request", "uri"},    // Caddy
+		{"ClientRequestPath"}, // Cloudflare Logpush
+		{"ClientRequestURI"},  //
+		{"request_uri"},       // nginx / ingress-nginx JSON
+		{"uri"},               //
+	}
+	jsonTimeKeys = [][]string{
+		{"ts"},                 // Caddy: epoch seconds, fractional
+		{"EdgeStartTimestamp"}, // Cloudflare Logpush
+		{"time_iso8601"},       // nginx / ingress-nginx JSON
+	}
+)
+
+func jsonFields(m map[string]any) lineFields {
+	var f lineFields
+	if ua := firstString(m, jsonUAKeys); ua != "" && ua != "-" {
+		f.uas = []string{ua}
+	}
+	if p := firstString(m, jsonPathKeys); p != "" {
+		// A path may arrive as a full request line (`GET /a HTTP/1.1`) in some nginx templates.
+		if fields := strings.Fields(p); len(fields) == 3 && isRequestLine(p) {
+			p = fields[1]
+		}
+		f.path = strings.SplitN(p, "?", 2)[0]
+	}
+	f.when = jsonTime(m)
+	return f
+}
+
+// firstString walks the key paths in order and returns the first value that is a string, or the
+// first element of an array of them — Caddy stores headers as `{"User-Agent": ["…"]}`, because a
+// header may legally repeat.
+func firstString(m map[string]any, paths [][]string) string {
+	for _, path := range paths {
+		var cur any = m
+		for _, k := range path {
+			obj, ok := cur.(map[string]any)
+			if !ok {
+				cur = nil
+				break
+			}
+			cur = obj[k]
+		}
+		switch v := cur.(type) {
+		case string:
+			if v != "" {
+				return v
+			}
+		case []any:
+			if len(v) > 0 {
+				if s, ok := v[0].(string); ok && s != "" {
+					return s
+				}
+			}
+		}
+	}
+	return ""
+}
+
+// jsonTime accepts the two spellings these logs use: an RFC 3339 string, or epoch seconds as a
+// number. ⚠️ As everywhere else here, a line that carries no usable time is a reason to report
+// less, never to fail — the counts are the part that must always work.
+func jsonTime(m map[string]any) time.Time {
+	for _, path := range jsonTimeKeys {
+		var cur any = m
+		for _, k := range path {
+			obj, ok := cur.(map[string]any)
+			if !ok {
+				cur = nil
+				break
+			}
+			cur = obj[k]
+		}
+		switch v := cur.(type) {
+		case float64:
+			sec, frac := math.Modf(v)
+			return time.Unix(int64(sec), int64(frac*1e9)).UTC()
+		case string:
+			for _, layout := range []string{time.RFC3339Nano, time.RFC3339} {
+				if t, err := time.Parse(layout, v); err == nil {
+					return t
+				}
+			}
+		}
+	}
+	return time.Time{}
 }
 
 // userAgentsIn pulls the user-agent out of one log line. The heuristic is deliberately simple:
