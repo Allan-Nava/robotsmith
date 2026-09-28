@@ -7,6 +7,26 @@ consumers get exactly what a tag says. Pushing is always the maintainer's call, 
 
 ## [Unreleased]
 
+### Fixed
+- **JSON access logs were not misread, they were miscounted.** Splitting a JSON line on `"` returns
+  the request path, the log message and a raw JSON fragment alongside the real user-agent, so three
+  lines from Caddy, Cloudflare Logpush and an ALB counted as **8 requests from 7 distinct
+  user-agents** and put the crawler in them at **62.5%** where the truth was 100%. ⚠️ That is worse
+  than a format the tool cannot read: every number here is a share, and `MinCandidateShare` and
+  `AutoBlockShare` decide against those shares — an invented denominator moves crawlers across
+  thresholds. The `unreadableLineShare` warning stayed silent throughout, because the parser
+  believed it had succeeded.
+
+### Added
+- **JSON access logs are read as JSON**: Caddy (`request.headers.User-Agent`, an array, because a
+  header may legally repeat), Cloudflare Logpush (`ClientRequestUserAgent`) and nginx /
+  ingress-nginx (`http_user_agent`), with the path and the timestamp alongside so the evidence
+  behind a `REVIEW` keeps working. ⚠️ A JSON line is **never** retried with the text heuristic when
+  it yields nothing — that fallback is the defect — so a log keying the user-agent somewhere we do
+  not know is reported unread and the warning fires. ⚠️ Validity decides what is JSON, never the
+  first character: HAProxy wraps its captured headers in `{braces}`, so a line can open with `{`
+  and be plain text.
+
 ### Changed
 - **`main` is protected and changes land through a pull request**, with the `test` check required
   to be green. Zero approvals are required — a solo maintainer cannot approve their own PR, so

@@ -197,7 +197,7 @@ robotsmith advise --ua-counts ua.txt
 | `check` | `--sitemaps` | also ask every `Sitemap:` URL whether it answers — off by default, because a verification must not make network calls nobody asked for |
 | `check` | `--quiet` | print the verdict only |
 | `lint` | `--strict` | make warnings fail too, for a file that must be correct under a first-match parser as well |
-| `advise` | `--log <file\|->` | access log (nginx `combined`, HAProxy `httplog` or a custom `log-format` — see [Log formats](#log-formats)); `-` reads stdin and gzipped input is decompressed transparently |
+| `advise` | `--log <file\|->` | access log — nginx `combined`, HAProxy `httplog`, or JSON (Caddy, Cloudflare Logpush, ingress-nginx); see [Log formats](#log-formats). `-` reads stdin and gzipped input is decompressed transparently |
 | `advise` | `--ua-counts <file>` | a count already made: the output of `… \| sort \| uniq -c` |
 | `advise` | `--current <file\|url>` | the current `robots.txt`, whose rules are preserved verbatim |
 | `advise` | `--host <host>` | the site's host, used to validate the `Sitemap:` line |
@@ -215,16 +215,29 @@ documented — or documented and no longer exposed — fails the build.
 
 ### Log formats
 
-`--log` reads the user-agent out of whatever the edge writes. Three shapes are covered by a fixture
-each, because the failure mode here is **silent** — a format the parser does not understand
-produces no crash and no empty output, just advice derived from a fraction of the traffic:
+`--log` reads the user-agent out of whatever the edge writes. Every shape below is covered by a
+fixture, because the failure mode here is **silent** — a format the parser does not understand
+produces no crash and no empty output, just advice derived from a fraction of the traffic, or from
+traffic that never happened:
 
 | Format | Where the UA is | Read |
 |---|---|---|
 | nginx `combined` | the last quoted field | ✅ |
 | HAProxy `option httplog` + `capture request header User-Agent` | in `{braces}`, pipe-separated when several headers are captured | ✅ |
 | HAProxy custom `log-format` quoting the UA (`%{+Q}[capture.req.hdr(n)]`) | a quoted field | ✅ |
+| Caddy (its default access log) | `request.headers.User-Agent`, an array | ✅ |
+| Cloudflare Logpush | `ClientRequestUserAgent` | ✅ |
+| nginx / ingress-nginx JSON | `http_user_agent` | ✅ |
 | HAProxy `option httplog` with **no** capture | nowhere — the header is not logged | ⚠️ warned |
+| a JSON log keying the UA somewhere else | an unknown key | ⚠️ warned |
+
+⚠️ A JSON line is read **as JSON**, and never retried with the text heuristic when it yields
+nothing. That fallback is the whole reason the JSON formats had to be handled: splitting
+`{"request":{"uri":"/news/a", …}}` on quotes returns the path, the log message and a raw JSON
+fragment as three "user-agents". Three Caddy/Cloudflare lines used to count as *eight* requests, and
+the crawler in them came out at 62.5% instead of 100% — and a share is not decoration here, it is
+what `AutoBlockShare` decides against. A key we do not know is reported unread; it is not guessed
+at.
 
 The last row is the one that matters. HAProxy's default `httplog` carries no user-agent at all, so
 there is nothing to read and an advice built on it would be built on nothing — `advise` says so on
