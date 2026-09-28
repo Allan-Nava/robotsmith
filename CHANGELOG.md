@@ -28,6 +28,17 @@ consumers get exactly what a tag says. Pushing is always the maintainer's call, 
   believed it had succeeded.
 
 ### Added
+- **`advise` says what it parsed**, before what it concluded: `Parsed 4,812 of 5,000 log lines
+  (json), 188 skipped.` on stderr, and the same figures in the `--json` document under `input`
+  (`format`, `lines`, `read`, `skipped`). ⚠️ Both counting defects fixed in this milestone were
+  invisible from the output — *"Observed 8 requests from 7 distinct user-agents"* reads exactly
+  like a correct answer — and a denominator nobody is shown is a denominator nobody can question.
+  A mixed log says `mixed` rather than picking a winner. ⚠️ Absent for `--ua-counts`, which has no
+  lines to report on: the same rule the evidence follows.
+- **The unreadable-log warning names a remedy that fits the format read.** Telling somebody running
+  Caddy to add `capture request header` to their HAProxy config is advice they cannot act on, and a
+  warning nobody can act on becomes noise — the same argument as a red build nobody can fix. A JSON
+  log is now told which keys are looked under.
 - **JSON access logs are read as JSON**: Caddy (`request.headers.User-Agent`, an array, because a
   header may legally repeat), Cloudflare Logpush (`ClientRequestUserAgent`) and nginx /
   ingress-nginx (`http_user_agent`), with the path and the timestamp alongside so the evidence

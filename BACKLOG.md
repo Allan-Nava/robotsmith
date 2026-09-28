@@ -43,7 +43,7 @@ disagree with the items all fail the build. The counts below are therefore check
 | [v0.4.0 — Your policy, verified continuously](#v040--your-policy-verified-continuously) ✅ | overridable policy, a closed loop, one-line CI, a report you can send | 0 | 6 |
 | [v0.5.0 — Trust the input, date the opinion](#v050--trust-the-input-date-the-opinion) ✅ | read the logs people actually have, and say how old the answers are | 0 | 2 |
 | [v0.6.0 — The three lines actually work](#v060--the-three-lines-actually-work) ✅ | run what we tell other people to run | 0 | 2 |
-| [v0.7.0 — Count what actually happened](#v070--count-what-actually-happened) | a share is the whole argument, so the denominator has to be true | 1 | 2 |
+| [v0.7.0 — Count what actually happened](#v070--count-what-actually-happened) ✅ | a share is the whole argument, so the denominator has to be true | 0 | 3 |
 | [Backlog (unscheduled)](#backlog-unscheduled) | worth doing, not worth scheduling | 0 | 1 |
 
 ---
@@ -521,6 +521,9 @@ defect is red on the original defect.
 
 # v0.7.0 — Count what actually happened
 
+> ✅ **Closed** — all three items implemented and tested, written up in
+> [CHANGELOG.md](CHANGELOG.md) under `0.7.0`.
+
 **Goal**: every number this tool prints is a share, and a share is the whole argument for blocking
 something. `MinCandidateShare` and `AutoBlockShare` key off those percentages, so a denominator that
 is wrong does not make the advice vaguer — it moves crawlers across thresholds. On a JSON access log
@@ -582,10 +585,11 @@ and a line whose candidates are all rejected counts as unread so the 0.5.0 warni
 
 ### `say-what-was-parsed` — report the format read and the lines counted
 
-- **status**: open
+- **status**: done
 - **priority**: medium
 - **labels**: advise, ux
 - **milestone**: v0.7.0 — Count what actually happened
+- **ref**: `LogSummary` in [main.go](main.go), `report.InputSummary`, `TestReadLogReportsWhatItParsed`
 
 The defect above was invisible from the output: "Observed 8 requests from 7 distinct user-agents"
 reads exactly like a correct answer. An operator cannot check a denominator they are never shown

@@ -133,6 +133,21 @@ type AdviseDoc struct {
 	RobotsTxt   string     `json:"robots_txt"`
 	// Comparison is present only when an earlier run was given to compare against.
 	Comparison *Comparison `json:"comparison,omitempty"`
+	// Input is what the parser did with the log. ⚠️ Absent for a `uniq -c` count, which has no
+	// lines to report on — the same rule Evidence follows, and for the same reason: a summary
+	// invented for an input that cannot support one is exactly the confident-looking number this
+	// field exists to expose.
+	Input *InputSummary `json:"input,omitempty"`
+}
+
+// InputSummary lets a consumer see the denominator every share was computed against, and trend it.
+// A log that suddenly reads half as many lines is the shape both of this tool's counting defects
+// took, and neither was visible from the output.
+type InputSummary struct {
+	Format  string `json:"format"` // json | text | mixed | empty
+	Lines   int64  `json:"lines"`
+	Read    int64  `json:"read"`
+	Skipped int64  `json:"skipped"`
 }
 
 // Rule is one classification rule as published by `crawlers`.
