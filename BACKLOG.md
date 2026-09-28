@@ -43,7 +43,7 @@ disagree with the items all fail the build. The counts below are therefore check
 | [v0.4.0 — Your policy, verified continuously](#v040--your-policy-verified-continuously) ✅ | overridable policy, a closed loop, one-line CI, a report you can send | 0 | 6 |
 | [v0.5.0 — Trust the input, date the opinion](#v050--trust-the-input-date-the-opinion) ✅ | read the logs people actually have, and say how old the answers are | 0 | 2 |
 | [v0.6.0 — The three lines actually work](#v060--the-three-lines-actually-work) ✅ | run what we tell other people to run | 0 | 2 |
-| [v0.7.0 — Count what actually happened](#v070--count-what-actually-happened) | a share is the whole argument, so the denominator has to be true | 2 | 1 |
+| [v0.7.0 — Count what actually happened](#v070--count-what-actually-happened) | a share is the whole argument, so the denominator has to be true | 1 | 2 |
 | [Backlog (unscheduled)](#backlog-unscheduled) | worth doing, not worth scheduling | 0 | 1 |
 
 ---
@@ -563,10 +563,11 @@ guessed at.
 
 ### `no-fabricated-user-agents` — refuse a candidate that cannot be a user-agent
 
-- **status**: open
+- **status**: done
 - **priority**: high
 - **labels**: advise, correctness
 - **milestone**: v0.7.0 — Count what actually happened
+- **ref**: `cannotBeAUserAgent` in [main.go](main.go), `TestAFabricatedCandidateIsNotCountedAsACrawler`, `TestEveryRealUserAgentIsStillAccepted`
 
 Reading JSON properly fixes the formats we know about; it does not fix the shape of the mistake.
 The quoted-field heuristic accepts a request path and a nested JSON fragment because the only tests

@@ -1105,6 +1105,9 @@ func userAgentsIn(line string) []string {
 		if isMediaType(c) {
 			continue
 		}
+		if cannotBeAUserAgent(c) {
+			continue
+		}
 		out = append(out, c)
 	}
 	return out
@@ -1133,6 +1136,24 @@ func bracedFields(line string) []string {
 		out = append(out, strings.Split(m[1], "|")...)
 	}
 	return out
+}
+
+// cannotBeAUserAgent rejects the candidates this heuristic is known to invent. ⚠️ It is phrased as
+// a short list of things a user-agent DEMONSTRABLY is not, never as a pattern a user-agent must
+// match: real ones are notoriously irregular, and dropping a genuine crawler is the worse failure
+// by far — it vanishes from the advice entirely, so nobody ever decides about it. A stray field
+// costs an inflated denominator; a missing crawler costs the decision.
+//
+// What is on the list and why it is safe:
+//
+//   - a leading "/" — that is a request path. No user-agent starts with a slash, and a path is the
+//     single most common thing that got counted as a crawler (it contains a slash, which used to be
+//     the entire test).
+//   - a double quote anywhere — a field extracted from between quotes or braces cannot itself
+//     contain one, so its presence means we are holding a fragment of a structure rather than a
+//     value: `{"ClientIP":"1.2.3.4",…}` handed over whole by the HAProxy brace capture.
+func cannotBeAUserAgent(c string) bool {
+	return strings.HasPrefix(c, "/") || strings.Contains(c, `"`)
 }
 
 // isMediaType recognises a captured `Content-Type`. It contains a slash and often a space, so

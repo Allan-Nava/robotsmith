@@ -8,6 +8,16 @@ consumers get exactly what a tag says. Pushing is always the maintainer's call, 
 ## [Unreleased]
 
 ### Fixed
+- **A candidate that cannot be a user-agent is no longer counted as one.** Reading JSON as JSON
+  fixed the formats we know about; it left the *shape* of the mistake in place, because the text
+  heuristic still accepted anything containing a slash or a space. A request path (`/news/a`) and a
+  whole JSON document handed over by HAProxy's `{brace}` capture both qualified, so any format
+  quoting something else kept inflating the totals — always in the direction of more traffic.
+  ⚠️ The guard is a short list of things a user-agent demonstrably is **not** (a leading `/`, a
+  double quote anywhere), never a pattern one must match: real user-agents are irregular, and
+  dropping a genuine crawler is the worse failure — it vanishes from the advice, so nobody ever
+  decides about it. A line whose candidates are all rejected counts as unread, so the warning sees
+  it.
 - **JSON access logs were not misread, they were miscounted.** Splitting a JSON line on `"` returns
   the request path, the log message and a raw JSON fragment alongside the real user-agent, so three
   lines from Caddy, Cloudflare Logpush and an ALB counted as **8 requests from 7 distinct

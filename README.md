@@ -248,6 +248,13 @@ appears:
 capture request header User-Agent len 200
 ```
 
+Whatever the format, a candidate that **demonstrably is not** a user-agent is refused: one starting
+with `/` (a request path) and one containing a double quote (a fragment of a quoted structure, not a
+value). ⚠️ Deliberately a list of what a user-agent is *not*, never a pattern one must match — real
+user-agents are irregular, and dropping a genuine crawler is the worse failure: it vanishes from the
+advice, so nobody ever decides about it. A line whose candidates are all refused counts as unread,
+which is what makes the warning fire.
+
 The counts are what must always work; paths and timestamps are extra, and a format that carries no
 date produces a report with less in it rather than an error.
 
