@@ -323,10 +323,19 @@ traffic.</p>
     <tr><td>nginx <code>combined</code></td><td>the last quoted field</td><td>✅</td></tr>
     <tr><td>HAProxy <code>option httplog</code> + <code>capture request header User-Agent</code></td><td>in <code>{braces}</code>, pipe-separated when several headers are captured</td><td>✅</td></tr>
     <tr><td>HAProxy custom <code>log-format</code> quoting the UA</td><td>a quoted field</td><td>✅</td></tr>
+    <tr><td>Caddy (its default access log)</td><td><code>request.headers.User-Agent</code>, an array</td><td>✅</td></tr>
+    <tr><td>Cloudflare Logpush</td><td><code>ClientRequestUserAgent</code></td><td>✅</td></tr>
+    <tr><td>nginx / ingress-nginx JSON</td><td><code>http_user_agent</code></td><td>✅</td></tr>
     <tr><td>HAProxy <code>option httplog</code> with <b>no</b> capture</td><td>nowhere — the header is not logged</td><td>⚠️ warned</td></tr>
   </tbody>
 </table>
-<p>The last row is the one that matters. HAProxy's default <code>httplog</code> carries no
+<p>⚠️ A JSON line is read <b>as JSON</b>, never retried with the text heuristic when it yields
+nothing. That fallback is why the JSON formats had to be handled at all: splitting
+<code>{"request":{"uri":"/news/a", …}}</code> on quotes returns the path, the log message and a raw
+JSON fragment as three "user-agents". Three such lines used to count as <b>eight</b> requests, and
+the crawler in them came out at 62.5% instead of 100% — and a share is what the auto-block threshold
+decides against. A key we do not know is reported unread, not guessed at.</p>
+<p>The HAProxy row without a capture matters for the same reason. HAProxy's default <code>httplog</code> carries no
 user-agent at all, so an advice built on it would be built on nothing — <code>advise</code> says so
 on stderr instead of printing a short list that looks complete. Add the capture and the traffic
 appears:</p>

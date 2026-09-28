@@ -392,6 +392,27 @@ Three choices inside that, each of which could have gone the other way:
 ⚠️ Tags are not covered by branch protection. `release.yml` force-moves `v0`, and a `git push
 --tags` still publishes a release — the discipline there is still a human one.
 
+### A named list of keys, and no fallback
+
+Reading JSON logs could have been done by walking the document for any key that looks like a
+user-agent. It is not, and the reason is the bug it replaced: the old heuristic guessed, and a guess
+that lands on the request path does not fail loudly — it adds a crawler that does not exist and
+inflates the denominator every share is computed against. `AutoBlockShare` decides against those
+shares, so an invented request is not a rounding error.
+
+So the key paths are a short, named list of what Caddy, Cloudflare Logpush and the nginx JSON
+templates actually write. A format we do not know is reported **unread**, which makes the 0.5.0
+warning fire and tells the operator the truth, rather than being approximated into a number that
+reads like an answer.
+
+⚠️ And a JSON line is never retried with the text heuristic when it yields nothing. That fallback
+looks like robustness and is the opposite: it is the exact path by which `{"request":{"uri":"/a"}}`
+became a crawler called `/a`.
+
+⚠️ Validity decides what is JSON, never the first character. HAProxy writes captured headers in
+`{braces}`, so a line can open with `{` and be plain text — deciding on the brace alone would have
+lost every HAProxy log to fix the Caddy ones.
+
 ## Non-goals
 
 Stated, not forgotten:
@@ -418,6 +439,9 @@ Stated, not forgotten:
   schemas, `lint --strict`, logs from stdin and gzip, CLI integration tests on the exit-code
   contract, release automation with the version from the tag, and a gate that keeps the docs
   honest. Each decision above; backlog in [BACKLOG.md](BACKLOG.md).
+- **2026-09-28** — JSON access logs (Caddy, Cloudflare Logpush, ingress-nginx) are read as JSON,
+  by a named list of key paths and with no fallback to the text heuristic. Reasoning above under
+  *A named list of keys, and no fallback*.
 - **2026-09-21** — `main` is protected: pull request required, `test` must be green, zero required
   approvals, administrators included. Reasoning above under *`main` behind a pull request*.
 - **2026-09-18** — milestone *v0.6.0 — The three lines actually work* complete: the advertised
